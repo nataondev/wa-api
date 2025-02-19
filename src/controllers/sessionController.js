@@ -3,6 +3,7 @@ const {
   createSession,
   getSessionStatus,
   deleteSession,
+  checkAndCleanSessionFolder,
 } = require("../services/whatsappService");
 const whatsappService = require("../services/whatsappService");
 const { sendResponse } = require("../utils/response");
@@ -62,10 +63,11 @@ module.exports = {
     const { error } = schema.validate(req.params);
 
     if (error) {
-      return ResponseUtil.badRequest({
+      return sendResponse(
         res,
-        message: error.details[0].message,
-      });
+        httpStatusCode.BAD_REQUEST,
+        error.details[0].message
+      );
     }
     const { sessionId } = req.params;
 
@@ -82,7 +84,13 @@ module.exports = {
         error: error.message,
         stack: error.stack,
       });
-      return ResponseUtil.internalError({ res, error: error });
+      return sendResponse(
+        res,
+        httpStatusCode.INTERNAL_SERVER_ERROR,
+        "Failed to create session",
+        null,
+        error
+      );
     }
   },
 
@@ -93,20 +101,31 @@ module.exports = {
     const { error } = schema.validate(req.params);
 
     if (error) {
-      return ResponseUtil.badRequest({
+      return sendResponse(
         res,
-        message: error.details[0].message,
-      });
+        httpStatusCode.BAD_REQUEST,
+        error.details[0].message
+      );
     }
+
     const { sessionId } = req.params;
     try {
       logger.info({
         msg: "Logging out session",
         sessionId,
       });
-      await deleteSession(sessionId, false);
 
-      return ResponseUtil.ok({ res, data: null, message: "Session deleted" });
+      const checkDir = await checkAndCleanSessionFolder(sessionId);
+      if (!checkDir) {
+        return sendResponse(res, httpStatusCode.NOT_FOUND, "Session not found");
+      }
+
+      await deleteSession(sessionId, false);
+      return sendResponse(
+        res,
+        httpStatusCode.OK,
+        "Session deleted successfully"
+      );
     } catch (error) {
       logger.error({
         msg: "Error logging out session",
@@ -114,7 +133,13 @@ module.exports = {
         error: error.message,
         stack: error.stack,
       });
-      return ResponseUtil.internalError({ res, error: error });
+      return sendResponse(
+        res,
+        httpStatusCode.INTERNAL_SERVER_ERROR,
+        "Failed to logout session",
+        null,
+        error
+      );
     }
   },
 
@@ -124,10 +149,7 @@ module.exports = {
     try {
       const client = whatsappService.getSession(sessionId);
       if (!client) {
-        return ResponseUtil.notFound({
-          res,
-          message: "Session not found",
-        });
+        return sendResponse(res, httpStatusCode.NOT_FOUND, "Session not found");
       }
 
       // Ambil daftar grup
@@ -141,20 +163,28 @@ module.exports = {
         creation_time: group.creation_time,
       }));
 
-      return ResponseUtil.ok({
+      return sendResponse(
         res,
-        message: "Groups retrieved successfully",
-        data: {
+        httpStatusCode.OK,
+        "Groups retrieved successfully",
+        {
           groups: formattedGroups,
-        },
-      });
+        }
+      );
     } catch (error) {
-      console.error(`[${sessionId}] Error getting groups:`, error);
-      return ResponseUtil.internalError({
-        res,
-        message: "Failed to get groups",
+      logger.error({
+        msg: "Error getting groups",
+        sessionId,
         error: error.message,
+        stack: error.stack,
       });
+      return sendResponse(
+        res,
+        httpStatusCode.INTERNAL_SERVER_ERROR,
+        "Failed to get groups",
+        null,
+        error
+      );
     }
   },
 };

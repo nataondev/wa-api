@@ -39,6 +39,67 @@ Simple WhatsApp API menggunakan library Baileys.
    - Enhanced group ID validation
    - Cleaner code structure
 
+### Response Standardization (20 Feb 2024)
+1. Standardisasi Response Format
+   - Menghapus penggunaan ResponseUtil
+   - Menggunakan sendResponse secara konsisten
+   - Format response yang seragam:
+     ```javascript
+     // Success Response
+     sendResponse(
+       res,
+       httpStatusCode.OK,
+       "Success message",
+       data // optional
+     );
+
+     // Error Response
+     sendResponse(
+       res,
+       httpStatusCode.ERROR_CODE,
+       "Error message",
+       null,
+       error // optional
+     );
+     ```
+
+2. Improved Error Handling
+   - Konsistensi format error response
+   - Better error logging dengan Pino
+   - Stack trace di development mode
+   - Error handling yang lebih terstruktur
+
+3. Response Status Codes
+   - 200: Success dengan data
+   - 400: Bad Request (validasi error)
+   - 404: Not Found (session/resource tidak ditemukan)
+   - 500: Internal Server Error
+
+4. Logging Enhancement
+   - Mengganti console.log/error dengan Pino logger
+   - Format log yang terstruktur
+   - Informasi error yang lebih detail
+   - Session tracking yang lebih baik
+
+### Example Response Format
+```json
+// Success Response
+{
+  "success": true,
+  "message": "Groups retrieved successfully",
+  "data": {
+    "groups": [...]
+  }
+}
+
+// Error Response
+{
+  "success": false,
+  "message": "Session not found",
+  "error": "Error details..." // only in development
+}
+```
+
 ## Configuration
 
 ### Logging Levels

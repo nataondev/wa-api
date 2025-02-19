@@ -389,6 +389,8 @@ const createSession = async (sessionId, isLegacy = false, res = null) => {
 const getSession = (sessionId) => sessions.get(sessionId) || null;
 
 const deleteSession = async (sessionId, isLegacy = false, res = null) => {
+  await checkAndCleanSessionFolder(sessionId);
+
   try {
     console.log(`[${sessionId}] Attempting to logout session...`);
 
@@ -850,4 +852,5 @@ module.exports = {
   cleanupAllSessions,
   sendMentionMessage,
   getGroupParticipants,
+  checkAndCleanSessionFolder,
 };
