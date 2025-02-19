@@ -1,0 +1,5 @@
+node_modules
+sessions
+yarn.lock
+.env
+package-lock.json
