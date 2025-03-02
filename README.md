@@ -20,58 +20,6 @@ Tersedia panduan untuk:
 - Fly.io (Free Tier, Region Singapore)
 - DigitalOcean App Platform ($5/month, Region Singapore)
 
-## Configuration
-
-### Logging Levels
-Add to your .env file:
-```env
-# Available levels: trace, debug, info, warn, error, fatal
-LOG_LEVEL=info
-```
-
-Level hierarchy:
-- trace: Most detailed logging
-- debug: Debugging information
-- info: General information (default)
-- warn: Warning messages
-- error: Error messages
-- fatal: Critical errors
-
-### API Endpoints
-
-New endpoint for mentions:
-```http
-POST /messages/mention
-Content-Type: application/json
-x-api-key: your_api_key
-
-{
-    "sender": "session_id_1",
-    "receiver": "6285123456789 or group_id@g.us",
-    "message": "Hello everyone!"
-}
-```
-
-## Usage Examples
-
-### Mention in Private Chat
-```javascript
-{
-    "sender": "session_1",
-    "receiver": "6285123456789",
-    "message": "Hello @user!"
-}
-```
-
-### Mention in Group
-```javascript
-{
-    "sender": "session_1",
-    "receiver": "123456789@g.us",
-    "message": "Hello everyone!"
-}
-```
-
 ## 🚀 Fitur Utama
 
 - Multi-session WhatsApp
@@ -87,6 +35,7 @@ x-api-key: your_api_key
 - Utilitas WhatsApp:
   - Cek status nomor
   - Daftar grup & peserta
+  - Mention feature untuk grup & private chat
 
 ## 📋 Prasyarat
 
@@ -108,7 +57,7 @@ APP_URL=127.0.0.1
 APP_PORT=3000
 ENABLE_API_KEY=true
 API_KEY=your_api_key
-BASE_URL=http://localhost:3000 # ganti dengan URL produksi
+LOG_LEVEL=info
 ```
 
 3. Jalankan server:
@@ -116,7 +65,7 @@ BASE_URL=http://localhost:3000 # ganti dengan URL produksi
 npm run start
 ```
 
-## 📱 Endpoint API
+## 📱 API Endpoints
 
 ### Sessions
 - `POST /sessions/:sessionId` - Membuat/menggunakan sesi
@@ -135,9 +84,34 @@ npm run start
   }
   ```
 
+- `POST /messages/mention` - Kirim pesan dengan mention
+  ```json
+  {
+    "sender": "session_id_1",
+    "receiver": "6285123456789 or group_id@g.us",
+    "message": "Hello @user!"
+  }
+  ```
+
 ### Utility
 - `GET /utility/groups/:sessionId` - Daftar grup & peserta
 - `POST /utility/check-number` - Cek status nomor WhatsApp
+
+## ⚙️ Konfigurasi
+
+### Logging Levels
+```env
+# Available levels: trace, debug, info, warn, error, fatal
+LOG_LEVEL=info
+```
+
+Level hierarchy:
+- trace: Most detailed logging
+- debug: Debugging information
+- info: General information (default)
+- warn: Warning messages
+- error: Error messages
+- fatal: Critical errors
 
 ## 🔄 Update Terbaru
 
@@ -157,23 +131,12 @@ npm run start
 - Cleanup sesi yang lebih menyeluruh
 - Penanganan memory leak yang lebih baik
 
-### 4. Dokumentasi
-- Swagger UI di `/docs`
-- Contoh request & response yang lebih lengkap
-- Penjelasan error handling yang lebih detail
-
 ## 📚 API Documentation
 
 Dokumentasi API tersedia melalui Swagger UI di:
 ```
 http://localhost:3000/docs
 ```
-
-Anda dapat:
-- Melihat semua endpoint yang tersedia
-- Mencoba endpoint secara langsung
-- Melihat schema request dan response
-- Menggunakan authorization dengan API key
 
 ## 🤝 Kontribusi
 
@@ -182,4 +145,3 @@ Kontribusi selalu diterima! Silakan buat pull request atau laporkan issues jika 
 ## 📜 Lisensi
 
 Proyek ini dilisensikan di bawah [MIT License](LICENSE).
-
