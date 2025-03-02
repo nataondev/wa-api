@@ -11,7 +11,7 @@
     "pm2:logs": "pm2 logs $npm_package_name"
   },
   "engines": {
-    "node": ">=18.17.1"
+    "node": "18.x"
   },
   "dependencies": {
     "@adiwajshing/keyed-db": "^0.2.4",

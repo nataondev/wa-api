@@ -9,8 +9,8 @@ const logger = require("./src/utils/logger");
 
 const app = express();
 
-const host = process.env.APP_URL || undefined;
-const port = parseInt(process.env.APP_PORT || 3000);
+const PORT = process.env.PORT || 3000;
+const HOST = process.env.NODE_ENV === "production" ? "0.0.0.0" : "localhost";
 
 app.use(cors());
 app.use(express.urlencoded({ extended: true }));
@@ -21,17 +21,13 @@ const listenerCallback = function () {
   whatsappService.init();
   logger.info({
     msg: "Server started",
-    host: host || "localhost",
-    port,
+    host: HOST,
+    port: PORT,
     env: process.env.NODE_ENV,
   });
 };
 
-if (host) {
-  app.listen(port, host, listenerCallback);
-} else {
-  app.listen(port, listenerCallback);
-}
+app.listen(PORT, HOST, listenerCallback);
 
 // Menambahkan handler untuk graceful shutdown
 nodeCleanup((exitCode, signal) => {
