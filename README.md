@@ -4,101 +4,21 @@ Simple WhatsApp API menggunakan library Baileys.
 
 ## Updates & Improvements
 
-### Latest Updates (19 Feb 2024)
-1. Added Mention Feature
-   - Support group & private chat mentions
-   - Auto-mention all participants in group
-   - Custom message with mentions
-   - No need to manually write @number
+### Latest Updates (02 Mar 2025)
+- Penambahan panduan deployment lengkap ([lihat DEPLOYMENT.md](DEPLOYMENT.md))
+- Penambahan quick deployment ke Heroku
+- Optimasi region dan latency
 
-2. Improved Logging System
-   - Implemented structured logging using Pino
-   - Configurable log levels (trace, debug, info, warn, error, fatal)
-   - Better timestamp format
-   - Colorized console output
-   - Added logging for critical operations:
-     - Session management
-     - Connection status
-     - Message delivery
-     - Error tracking
+## 🚀 Deployment
 
-3. Enhanced Session Management
-   - Better reconnection handling
-   - Improved session cleanup
-   - Added session status validation
-   - Support for multiple error codes:
-     - 503: Service Unavailable
-     - 515: Stream Error
-     - 500: Internal Server Error
-     - 408: Request Timeout
-     - 428: Unknown Error
+Untuk panduan lengkap deployment ke berbagai platform (Heroku, Railway, Render, dll), silakan lihat [DEPLOYMENT.md](DEPLOYMENT.md).
 
-4. Code Improvements
-   - Better error handling
-   - Improved phone number formatting
-   - Enhanced group ID validation
-   - Cleaner code structure
-
-### Response Standardization (20 Feb 2024)
-1. Standardisasi Response Format
-   - Menghapus penggunaan ResponseUtil
-   - Menggunakan sendResponse secara konsisten
-   - Format response yang seragam:
-     ```javascript
-     // Success Response
-     sendResponse(
-       res,
-       httpStatusCode.OK,
-       "Success message",
-       data // optional
-     );
-
-     // Error Response
-     sendResponse(
-       res,
-       httpStatusCode.ERROR_CODE,
-       "Error message",
-       null,
-       error // optional
-     );
-     ```
-
-2. Improved Error Handling
-   - Konsistensi format error response
-   - Better error logging dengan Pino
-   - Stack trace di development mode
-   - Error handling yang lebih terstruktur
-
-3. Response Status Codes
-   - 200: Success dengan data
-   - 400: Bad Request (validasi error)
-   - 404: Not Found (session/resource tidak ditemukan)
-   - 500: Internal Server Error
-
-4. Logging Enhancement
-   - Mengganti console.log/error dengan Pino logger
-   - Format log yang terstruktur
-   - Informasi error yang lebih detail
-   - Session tracking yang lebih baik
-
-### Example Response Format
-```json
-// Success Response
-{
-  "success": true,
-  "message": "Groups retrieved successfully",
-  "data": {
-    "groups": [...]
-  }
-}
-
-// Error Response
-{
-  "success": false,
-  "message": "Session not found",
-  "error": "Error details..." // only in development
-}
-```
+Tersedia panduan untuk:
+- Heroku (Basic & Enterprise Plan)
+- Railway (Free Tier, Region Singapore)
+- Render (Free Tier, Region Singapore)
+- Fly.io (Free Tier, Region Singapore)
+- DigitalOcean App Platform ($5/month, Region Singapore)
 
 ## Configuration
 

@@ -25,12 +25,65 @@ fi
 echo "📝 Masukkan nama aplikasi Heroku Anda:"
 read APP_NAME
 
+# Pilihan region
+echo "📍 Pilih region server:"
+echo "=== Common Runtime (Basic Plan) ==="
+echo "1) Europe (eu) - Frankfurt/Ireland"
+echo "2) United States (us) - Default"
+
+echo -e "\n=== Private Spaces (Enterprise Plan) ==="
+echo "3) Dublin, Ireland (dublin)"
+echo "4) Frankfurt, Germany (frankfurt)"
+echo "5) London, UK (london)"
+echo "6) Montreal, Canada (montreal)"
+echo "7) Mumbai, India (mumbai)"
+echo "8) Oregon, US (oregon)"
+echo "9) Singapore (singapore)"
+echo "10) Sydney, Australia (sydney)"
+echo "11) Tokyo, Japan (tokyo)"
+echo "12) Virginia, US (virginia)"
+
+read -p "Pilih nomor region (1-12): " REGION_CHOICE
+
+case $REGION_CHOICE in
+    1) 
+        REGION="eu"
+        echo "✅ Selected: Europe (Common Runtime)"
+        ;;
+    2) 
+        REGION="us"
+        echo "✅ Selected: United States (Common Runtime)"
+        ;;
+    3|4|5|6|7|8|9|10|11|12)
+        echo "⚠️ Region ini hanya tersedia untuk Private Spaces (Enterprise Plan)"
+        echo "Menggunakan Europe sebagai alternatif..."
+        REGION="eu"
+        ;;
+    *) 
+        echo "❌ Pilihan tidak valid. Menggunakan Europe sebagai default."
+        REGION="eu"
+        ;;
+esac
+
+# Estimasi latency berdasarkan region
+case $REGION in
+    "eu")
+        echo "📡 Estimasi latency dari Indonesia: ~250-350ms"
+        ;;
+    "us")
+        echo "📡 Estimasi latency dari Indonesia: ~300-400ms"
+        ;;
+esac
+
 # Cek apakah aplikasi sudah ada
 if ! heroku apps:info -a "$APP_NAME" &> /dev/null; then
-    echo "🆕 Membuat aplikasi baru di Heroku..."
-    heroku create "$APP_NAME"
+    echo "🆕 Membuat aplikasi baru di Heroku di region $REGION..."
+    heroku create "$APP_NAME" --region "$REGION"
 else
     echo "✅ Aplikasi '$APP_NAME' ditemukan."
+    # Tampilkan region aplikasi yang sudah ada
+    CURRENT_REGION=$(heroku info -a "$APP_NAME" | grep "Region" | awk '{print $2}')
+    echo "📍 Region saat ini: $CURRENT_REGION"
 fi
 
 # Set environment variables
