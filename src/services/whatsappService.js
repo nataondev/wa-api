@@ -1,3 +1,6 @@
+const { webcrypto } = require('crypto');
+global.crypto = webcrypto;
+
 const fs = require("fs");
 const path = require("path");
 
