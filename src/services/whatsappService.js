@@ -1,3 +1,6 @@
+const { webcrypto } = require('crypto');
+global.crypto = webcrypto;
+
 const fs = require("fs");
 const path = require("path");
 
@@ -566,8 +569,7 @@ const isExists = async (client, jid, isGroup = false) => {
     }
 
     chatInfo = await client.onWhatsApp(jid);
-
-    return chatInfo.exists;
+    return Array.isArray(chatInfo) && chatInfo.length > 0 && chatInfo[0].exists === true;
   } catch {
     return false;
   }
