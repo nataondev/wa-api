@@ -1,6 +1,5 @@
 const Joi = require("joi");
 const whatsappService = require("../services/whatsappService");
-const queueService = require("../services/queueService");
 const { categorizeFile } = require("../utils/general");
 const { sendResponse } = require("../utils/response");
 const httpStatusCode = require("../constants/httpStatusCode");
@@ -98,12 +97,24 @@ module.exports = {
       let result;
       // Kirim ke satu penerima
       if (formattedReceivers.length === 1) {
-        if (!whatsappService.isExists(client, formattedReceivers[0])) {
-          return sendResponse(
-            res,
-            httpStatusCode.BAD_REQUEST,
-            "Invalid phone number"
+        // Periksa apakah nomor valid
+        try {
+          const isValid = await whatsappService.isExists(
+            client,
+            formattedReceivers[0]
           );
+          if (!isValid) {
+            return sendResponse(
+              res,
+              httpStatusCode.BAD_REQUEST,
+              "Invalid phone number"
+            );
+          }
+        } catch (error) {
+          logger.warn({
+            msg: `[${sender}] Error checking phone number`,
+            error: error.message,
+          });
         }
 
         logger.info({
@@ -111,18 +122,43 @@ module.exports = {
         });
 
         // Kirim pesan (sudah menggunakan antrian di whatsappService)
-        const sendResult = await whatsappService.sendMessage(
-          client,
-          formattedReceivers[0],
-          formattedMessage
-        );
+        try {
+          logger.info({
+            msg: `[${sender}] About to call whatsappService.sendMessage`,
+            receiver: formattedReceivers[0],
+          });
 
-        result = {
-          sender,
-          receiver: formattedReceivers[0],
-          message: formattedMessage,
-          messageId: sendResult?.key?.id || null,
-        };
+          const sendResult = await whatsappService.sendMessage(
+            client,
+            formattedReceivers[0],
+            formattedMessage
+          );
+
+          logger.info({
+            msg: `[${sender}] sendMessage result received`,
+            receiver: formattedReceivers[0],
+            resultType: typeof sendResult,
+            resultKeys: sendResult ? Object.keys(sendResult) : [],
+            messageId: sendResult?.key?.id || null,
+          });
+
+          result = {
+            sender,
+            receiver: formattedReceivers[0],
+            message: formattedMessage.text || message,
+            file: file || null,
+            viewOnce: viewOnce || false,
+            messageId: sendResult?.key?.id || null,
+          };
+        } catch (sendError) {
+          logger.error({
+            msg: `[${sender}] Error calling sendMessage`,
+            receiver: formattedReceivers[0],
+            error: sendError.message,
+            stack: sendError.stack,
+          });
+          throw sendError;
+        }
       }
       // Kirim ke banyak penerima
       else {
@@ -132,26 +168,38 @@ module.exports = {
 
         const results = [];
         const invalidNumbers = [];
-        const sendPromises = formattedReceivers.map(async (receiver) => {
-          if (!whatsappService.isExists(client, receiver)) {
-            invalidNumbers.push(receiver);
-            return;
-          }
 
+        // Gunakan Promise.all untuk pengecekan dan pengiriman asinkron
+        const sendPromises = formattedReceivers.map(async (receiver) => {
           try {
+            // Periksa nomor telepon
+            const isValid = await whatsappService.isExists(client, receiver);
+            if (!isValid) {
+              invalidNumbers.push(receiver);
+              return;
+            }
+
+            // Kirim pesan
             const sendResult = await whatsappService.sendMessage(
               client,
               receiver,
               formattedMessage
             );
+
             results.push({
               receiver,
+              message: formattedMessage.text || message,
+              file: file || null,
+              viewOnce: viewOnce || false,
               messageId: sendResult?.key?.id || null,
-              status: "queued",
+              status: "sent",
             });
           } catch (error) {
             results.push({
               receiver,
+              message: formattedMessage.text || message,
+              file: file || null,
+              viewOnce: viewOnce || false,
               error: error.message,
               status: "failed",
             });
@@ -162,7 +210,7 @@ module.exports = {
 
         result = {
           total: formattedReceivers.length,
-          queued: results.filter((r) => r.status === "queued").length,
+          sent: results.filter((r) => r.status === "sent").length,
           failed: results.filter((r) => r.status === "failed").length,
           invalid: invalidNumbers.length,
           details: {
@@ -175,7 +223,7 @@ module.exports = {
       return sendResponse(
         res,
         httpStatusCode.OK,
-        "Message queued successfully",
+        "Message sent successfully",
         result
       );
     } catch (error) {
@@ -245,10 +293,13 @@ module.exports = {
         httpStatusCode.OK,
         "Mention message sent successfully",
         {
-          messageId: result?.key?.id,
+          sender,
           receiver: formattedReceiver,
           message: message || "Hello!",
+          messageId: result?.key?.id,
           mentions: result.mentions,
+          file: null,
+          viewOnce: false,
         }
       );
     } catch (error) {

@@ -203,7 +203,23 @@ const createSession = async (sessionId, isLegacy = false, res = null) => {
     });
 
     store.bind(client.ev);
-    sessions.set(sessionId, { ...client, store, isLegacy });
+
+    // Simpan session
+    logger.info({
+      msg: `Creating session object for ${sessionId}`,
+      isLegacy,
+      sessionId,
+    });
+
+    // Pastikan semua fungsi client Baileys tersedia
+    sessions.set(sessionId, client);
+
+    // Tambahkan store sebagai properti terpisah
+    const storedSession = sessions.get(sessionId);
+    if (storedSession) {
+      storedSession.store = store;
+      storedSession.isLegacy = isLegacy;
+    }
 
     let connectionTimeout;
     let hasResponded = false;
@@ -622,21 +638,57 @@ const queueService = require("./queueService");
 
 const sendMessage = async (client, chatId, message, delayTime = 5) => {
   try {
-    const sessionId = Object.keys(sessions).find(
-      (key) => sessions[key] === client
+    // Perbaikan: Gunakan Array.from(sessions.entries()) untuk mencari sessionId dari Map
+    const sessionEntry = Array.from(sessions.entries()).find(
+      ([_, clientObj]) => clientObj === client
     );
+
+    const sessionId = sessionEntry ? sessionEntry[0] : null;
     if (!sessionId) {
       throw new Error("Session not found");
     }
 
-    // Tambahkan ke antrian
-    return await queueService.addToQueue(sessionId, {
+    // Log pesan untuk debugging
+    logger.info({
+      msg: `Adding message to queue`,
       sessionId,
       chatId,
-      message,
-      type: "text",
+      messageType: typeof message,
     });
+
+    // Tambahkan ke antrian
+    try {
+      const result = await queueService.addToQueue(sessionId, {
+        sessionId,
+        chatId,
+        message,
+        type: "text",
+      });
+
+      logger.info({
+        msg: `Message added to queue successfully`,
+        sessionId,
+        chatId,
+        messageId: result?.key?.id || null,
+      });
+
+      return result;
+    } catch (queueError) {
+      logger.error({
+        msg: `Failed to add message to queue`,
+        sessionId,
+        chatId,
+        error: queueError.message,
+        stack: queueError.stack,
+      });
+      throw queueError;
+    }
   } catch (err) {
+    logger.error({
+      msg: `Error in sendMessage`,
+      error: err.message,
+      stack: err.stack,
+    });
     return Promise.reject(err);
   }
 };
@@ -842,8 +894,11 @@ const getGroupParticipants = async (client, groupId) => {
 
 // Tambahkan fungsi untuk send mention
 const sendMentionMessage = async (client, receiver, message = "") => {
-  const sessionId =
-    Object.keys(sessions).find((key) => sessions[key] === client) || "unknown";
+  // Perbaikan: Gunakan Array.from(sessions.entries()) untuk mencari sessionId dari Map
+  const sessionEntry = Array.from(sessions.entries()).find(
+    ([_, clientObj]) => clientObj === client
+  );
+  const sessionId = sessionEntry ? sessionEntry[0] : "unknown";
 
   try {
     const isGroup = receiver.endsWith("@g.us");
