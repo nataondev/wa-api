@@ -20,6 +20,7 @@ const {
   useMultiFileAuthState,
   delay,
   Browsers,
+  fetchLatestBaileysVersion,
 } = require("@whiskeysockets/baileys");
 
 const WebSocket = require("ws");
@@ -443,6 +444,22 @@ const deleteSession = async (sessionId, isLegacy = false, res = null) => {
 
   try {
     console.log(`[${sessionId}] Attempting to logout session...`);
+
+    // Hapus webhook untuk session ini
+    const webhookService = require("./webhookService");
+    webhookService.clearSessionWebhook(sessionId);
+    logger.info({
+      msg: `Webhook untuk session ${sessionId} dihapus saat logout`,
+      sessionId,
+    });
+
+    // Hapus antrian pesan untuk session ini
+    const queueService = require("./queueService");
+    queueService.clearSessionQueue(sessionId);
+    logger.info({
+      msg: `Antrian pesan untuk session ${sessionId} dihapus saat logout`,
+      sessionId,
+    });
 
     // Cek apakah sesi ada di memory atau file system
     const session = sessions.get(sessionId);

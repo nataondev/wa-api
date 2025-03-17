@@ -159,6 +159,39 @@ function addToQueue(sessionId, task) {
 }
 
 /**
+ * Menghapus queue untuk sesi tertentu
+ * @param {string} sessionId - ID sesi yang queuenya akan dihapus
+ * @returns {boolean} - Status keberhasilan
+ */
+function clearSessionQueue(sessionId) {
+  if (!queues[sessionId]) {
+    logger.info({
+      msg: `Tidak ada queue untuk dihapus`,
+      sessionId,
+    });
+    return false;
+  }
+
+  try {
+    queues[sessionId].destroy();
+    delete queues[sessionId];
+
+    logger.info({
+      msg: `Queue untuk session berhasil dihapus`,
+      sessionId,
+    });
+    return true;
+  } catch (error) {
+    logger.error({
+      msg: `Gagal menghapus queue untuk session`,
+      sessionId,
+      error: error.message,
+    });
+    return false;
+  }
+}
+
+/**
  * Menghapus semua queue yang ada
  * Berguna saat melakukan shutdown aplikasi
  */
@@ -209,4 +242,5 @@ module.exports = {
   addToQueue,
   clearAllQueues,
   getQueueStatus,
+  clearSessionQueue,
 };
