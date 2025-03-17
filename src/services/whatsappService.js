@@ -10,6 +10,7 @@ const { sendResponse } = require("../utils/response");
 const httpStatusCode = require("../constants/httpStatusCode");
 const util = require("util");
 const logger = require("../utils/logger");
+const webhookService = require("./webhookService");
 
 const readFileAsync = util.promisify(fs.readFile);
 const {
@@ -176,8 +177,6 @@ const checkAndCleanSessionFolder = (sessionId) => {
     return false;
   }
 };
-
-const webhookService = require("./webhookService");
 
 const createSession = async (sessionId, isLegacy = false, res = null) => {
   try {
