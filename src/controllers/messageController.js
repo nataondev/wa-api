@@ -44,6 +44,7 @@ module.exports = {
       message: Joi.string().required(),
       file: Joi.string(),
       viewOnce: Joi.boolean().default(false),
+      showTyping: Joi.boolean().default(true),
     });
 
     const { error } = schema.validate(req.body);
@@ -55,7 +56,7 @@ module.exports = {
       );
     }
 
-    const { sender, receiver, message, file, viewOnce } = req.body;
+    const { sender, receiver, message, file, viewOnce, showTyping } = req.body;
 
     try {
       const client = whatsappService.getSession(sender);
@@ -131,7 +132,9 @@ module.exports = {
           const sendResult = await whatsappService.sendMessage(
             client,
             formattedReceivers[0],
-            formattedMessage
+            formattedMessage,
+            5,
+            showTyping
           );
 
           logger.info({
@@ -183,7 +186,9 @@ module.exports = {
             const sendResult = await whatsappService.sendMessage(
               client,
               receiver,
-              formattedMessage
+              formattedMessage,
+              5,
+              showTyping
             );
 
             results.push({
@@ -248,6 +253,7 @@ module.exports = {
       sender: Joi.string().required(),
       receiver: Joi.string().required(),
       message: Joi.string().allow(""), // Message bisa kosong
+      showTyping: Joi.boolean().default(true),
     });
 
     const { error } = schema.validate(req.body);
@@ -259,7 +265,7 @@ module.exports = {
       );
     }
 
-    const { sender, receiver, message } = req.body;
+    const { sender, receiver, message, showTyping } = req.body;
 
     try {
       const client = whatsappService.getSession(sender);
@@ -278,7 +284,8 @@ module.exports = {
       const result = await whatsappService.sendMentionMessage(
         client,
         formattedReceiver,
-        message
+        message,
+        showTyping
       );
 
       logger.info({

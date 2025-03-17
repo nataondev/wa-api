@@ -653,7 +653,13 @@ const groupFetchAllParticipating = (client) => {
 
 const queueService = require("./queueService");
 
-const sendMessage = async (client, chatId, message, delayTime = 5) => {
+const sendMessage = async (
+  client,
+  chatId,
+  message,
+  delayTime = 5,
+  showTyping = true
+) => {
   try {
     // Perbaikan: Gunakan Array.from(sessions.entries()) untuk mencari sessionId dari Map
     const sessionEntry = Array.from(sessions.entries()).find(
@@ -665,6 +671,39 @@ const sendMessage = async (client, chatId, message, delayTime = 5) => {
       throw new Error("Session not found");
     }
 
+    // Tampilkan status "sedang mengetik" sebelum mengirim pesan
+    if (showTyping) {
+      try {
+        // Kirim status "composing" (sedang mengetik)
+        await client.sendPresenceUpdate("composing", chatId);
+
+        // Tunggu beberapa detik agar tampilan "sedang mengetik" terlihat natural
+        // Waktu tunggu proporsional dengan panjang pesan
+        const typingDelay =
+          typeof message === "object" && message.text
+            ? Math.min(Math.max(message.text.length * 40, 1000), 3000)
+            : typeof message === "string"
+            ? Math.min(Math.max(message.length * 40, 1000), 3000)
+            : 1500;
+
+        logger.info({
+          msg: `Showing typing indicator for ${typingDelay}ms`,
+          sessionId,
+          chatId,
+        });
+
+        await delay(typingDelay);
+      } catch (typingError) {
+        // Lanjutkan proses pengiriman meskipun ada kesalahan saat menampilkan status mengetik
+        logger.warn({
+          msg: `Failed to show typing indicator, proceeding with sending`,
+          sessionId,
+          chatId,
+          error: typingError.message,
+        });
+      }
+    }
+
     // Log pesan untuk debugging
     logger.info({
       msg: `Adding message to queue`,
@@ -672,6 +711,20 @@ const sendMessage = async (client, chatId, message, delayTime = 5) => {
       chatId,
       messageType: typeof message,
     });
+
+    // Setelah menunjukkan typing, kirim status "paused" untuk menghentikan indikator typing
+    if (showTyping) {
+      try {
+        await client.sendPresenceUpdate("paused", chatId);
+      } catch (typingError) {
+        logger.warn({
+          msg: `Failed to reset typing indicator`,
+          sessionId,
+          chatId,
+          error: typingError.message,
+        });
+      }
+    }
 
     // Tambahkan ke antrian
     try {
@@ -910,7 +963,12 @@ const getGroupParticipants = async (client, groupId) => {
 };
 
 // Tambahkan fungsi untuk send mention
-const sendMentionMessage = async (client, receiver, message = "") => {
+const sendMentionMessage = async (
+  client,
+  receiver,
+  message = "",
+  showTyping = true
+) => {
   // Perbaikan: Gunakan Array.from(sessions.entries()) untuk mencari sessionId dari Map
   const sessionEntry = Array.from(sessions.entries()).find(
     ([_, clientObj]) => clientObj === client
@@ -929,6 +987,35 @@ const sendMentionMessage = async (client, receiver, message = "") => {
       console.log(`[${sessionId}] Mentioning to private ${receiver}`);
     }
 
+    // Tampilkan status "sedang mengetik" sebelum mengirim pesan
+    if (showTyping) {
+      try {
+        // Kirim status "composing" (sedang mengetik)
+        await client.sendPresenceUpdate("composing", receiver);
+
+        // Tunggu beberapa detik agar tampilan "sedang mengetik" terlihat natural
+        const typingDelay = message
+          ? Math.min(Math.max(message.length * 40, 1000), 5000)
+          : 2000;
+
+        logger.info({
+          msg: `[MENTION] Showing typing indicator for ${typingDelay}ms`,
+          sessionId,
+          receiver,
+        });
+
+        await delay(typingDelay);
+      } catch (typingError) {
+        // Lanjutkan proses pengiriman meskipun ada kesalahan saat menampilkan status mengetik
+        logger.warn({
+          msg: `[MENTION] Failed to show typing indicator, proceeding with sending`,
+          sessionId,
+          receiver,
+          error: typingError.message,
+        });
+      }
+    }
+
     const mentionedMessage = await createMentionedMessage(
       client,
       receiver,
@@ -937,6 +1024,20 @@ const sendMentionMessage = async (client, receiver, message = "") => {
     );
     if (!mentionedMessage) {
       throw new Error("Failed to create mentioned message");
+    }
+
+    // Setelah menunjukkan typing, kirim status "paused" untuk menghentikan indikator typing
+    if (showTyping) {
+      try {
+        await client.sendPresenceUpdate("paused", receiver);
+      } catch (typingError) {
+        logger.warn({
+          msg: `[MENTION] Failed to reset typing indicator`,
+          sessionId,
+          receiver,
+          error: typingError.message,
+        });
+      }
     }
 
     const result = await client.sendMessage(receiver, mentionedMessage);
