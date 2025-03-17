@@ -12,13 +12,6 @@ WhatsApp API menggunakan library Baileys dengan fitur multi-session dan webhook.
 
 Untuk panduan lengkap deployment ke berbagai platform (Heroku, Railway, Render, dll), silakan lihat [DEPLOYMENT.md](DEPLOYMENT.md).
 
-Tersedia panduan untuk:
-- Heroku (Basic & Enterprise Plan)
-- Railway (Free Tier, Region Singapore)
-- Render (Free Tier, Region Singapore)
-- Fly.io (Free Tier, Region Singapore)
-- DigitalOcean App Platform ($5/month, Region Singapore)
-
 ## 🚀 Fitur Utama
 
 - Multi-session WhatsApp
@@ -170,14 +163,6 @@ Dokumentasi API tersedia melalui Swagger UI di:
 http://localhost:3000/docs
 ```
 
-## 🤝 Kontribusi
-
-Kontribusi selalu diterima! Silakan buat pull request atau laporkan issues jika menemukan bug.
-
-## 📜 Lisensi
-
-Proyek ini dilisensikan di bawah [MIT License](LICENSE).
-
 ## Webhook
 
 Sistem webhook memungkinkan Anda untuk menerima notifikasi real-time tentang:
@@ -249,3 +234,11 @@ Sistem menggunakan antrian untuk mengatur pengiriman pesan dengan konfigurasi:
 - Max retries: 3x
 - Retry delay: 2 detik
 - Timeout: 30 detik
+
+## 🤝 Kontribusi
+
+Kontribusi selalu diterima! Silakan buat pull request atau laporkan issues jika menemukan bug.
+
+## 📜 Lisensi
+
+Proyek ini dilisensikan di bawah [MIT License](LICENSE).
