@@ -1,4 +1,4 @@
-const { webcrypto } = require('crypto');
+const { webcrypto } = require("crypto");
 global.crypto = webcrypto;
 
 const fs = require("fs");
@@ -177,6 +177,8 @@ const checkAndCleanSessionFolder = (sessionId) => {
   }
 };
 
+const webhookService = require("./webhookService");
+
 const createSession = async (sessionId, isLegacy = false, res = null) => {
   try {
     // Log start creating session
@@ -207,6 +209,29 @@ const createSession = async (sessionId, isLegacy = false, res = null) => {
     let connectionTimeout;
     let hasResponded = false;
 
+    // Tambahkan event listener untuk pesan masuk
+    client.ev.on("messages.upsert", async (m) => {
+      if (m.type === "notify") {
+        for (const msg of m.messages) {
+          if (!msg.key.fromMe) {
+            logger.info({
+              msg: `Pesan baru diterima`,
+              sessionId,
+              from: msg.key.remoteJid,
+              messageId: msg.key.id,
+            });
+
+            // Kirim ke webhook
+            webhookService.sendToWebhook(sessionId, {
+              type: "message",
+              message: msg,
+            });
+          }
+        }
+      }
+    });
+
+    // Tambahkan event listener untuk status koneksi
     client.ev.on("connection.update", async (update) => {
       const { connection, lastDisconnect, qr } = update;
 
@@ -219,6 +244,13 @@ const createSession = async (sessionId, isLegacy = false, res = null) => {
           sessionId,
           state: connection,
           code: lastDisconnect?.error?.output?.statusCode,
+        });
+
+        // Kirim status koneksi ke webhook
+        webhookService.sendToWebhook(sessionId, {
+          type: "connection",
+          status: connection,
+          qr: qr,
         });
       }
 
@@ -569,7 +601,11 @@ const isExists = async (client, jid, isGroup = false) => {
     }
 
     chatInfo = await client.onWhatsApp(jid);
-    return Array.isArray(chatInfo) && chatInfo.length > 0 && chatInfo[0].exists === true;
+    return (
+      Array.isArray(chatInfo) &&
+      chatInfo.length > 0 &&
+      chatInfo[0].exists === true
+    );
   } catch {
     return false;
   }
@@ -583,11 +619,26 @@ const groupFetchAllParticipating = (client) => {
   }
 };
 
+const queueService = require("./queueService");
+
 const sendMessage = async (client, chatId, message, delayTime = 5) => {
   try {
-    return client.sendMessage(chatId, message);
+    const sessionId = Object.keys(sessions).find(
+      (key) => sessions[key] === client
+    );
+    if (!sessionId) {
+      throw new Error("Session not found");
+    }
+
+    // Tambahkan ke antrian
+    return await queueService.addToQueue(sessionId, {
+      sessionId,
+      chatId,
+      message,
+      type: "text",
+    });
   } catch (err) {
-    return Promise.reject(null);
+    return Promise.reject(err);
   }
 };
 
@@ -627,6 +678,10 @@ const cleanup = () => {
     msg: "Running cleanup before exit",
     sessions: sessions.size,
   });
+
+  // Bersihkan semua queue
+  queueService.clearAllQueues();
+
   sessions.forEach((client, sessionId) => {
     if (!client.isLegacy) {
       client.store.writeToFile(sessionsDir(sessionId + "_store.json"));

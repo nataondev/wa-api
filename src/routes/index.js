@@ -2,6 +2,7 @@ const router = require("express").Router();
 const sessionsRoute = require("./sessionsRoute.js");
 const messageRoute = require("./messageRoute.js");
 const utilityRoute = require("./utilityRoute.js");
+const webhookRoutes = require("./webhookRoutes.js");
 const swaggerRoute = require("./swagger");
 
 // Health check
@@ -24,6 +25,7 @@ router.get("/health", (req, res) =>
 router.use("/sessions", sessionsRoute); // Manajemen Sesi
 router.use("/messages", messageRoute); // Pengiriman Pesan
 router.use("/utility", utilityRoute); // Utilitas & Helper
+router.use("/webhook", webhookRoutes); // Webhook Management
 
 // Swagger documentation - pindah ke /docs
 router.use("/", swaggerRoute); // Dokumentasi API

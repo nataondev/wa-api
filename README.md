@@ -1,13 +1,12 @@
 # WhatsApp API
 
-Simple WhatsApp API menggunakan library Baileys.
+WhatsApp API menggunakan library Baileys dengan fitur multi-session dan webhook.
 
 ## Updates & Improvements
 
-### Latest Updates (02 Mar 2025)
-- Penambahan panduan deployment lengkap ([lihat DEPLOYMENT.md](DEPLOYMENT.md))
-- Penambahan quick deployment ke Heroku
-- Optimasi region dan latency
+### Latest Updates (17 Mar 2025)
+- Penambahan sistem antrian untuk pengiriman pesan batch
+- Implementasi webhook untuk pesan masuk dan status koneksi
 
 ## 🚀 Deployment
 
@@ -25,13 +24,14 @@ Tersedia panduan untuk:
 - Multi-session WhatsApp
 - Pengiriman pesan teks
 - Pengiriman pesan media (gambar, video, dokumen)
-- Pengiriman pesan massal (bulk messaging)
+- Pengiriman pesan massal (bulk messaging) dengan sistem antrian
 - Manajemen sesi (create, check status, logout)
 - Penanganan memory leak yang optimal
 - Graceful shutdown
 - Error handling yang robust
 - Sistem reconnection yang handal
 - Logging yang terstruktur
+- Webhook untuk pesan masuk dan status koneksi
 - Utilitas WhatsApp:
   - Cek status nomor
   - Daftar grup & peserta
@@ -58,6 +58,7 @@ APP_PORT=3000
 ENABLE_API_KEY=true
 API_KEY=your_api_key
 LOG_LEVEL=info
+GLOBAL_WEBHOOK_URL=https://your-webhook-url.com # Optional
 ```
 
 3. Jalankan server:
@@ -93,6 +94,15 @@ npm run start
   }
   ```
 
+### Webhook
+- `POST /webhook/set/:sessionId` - Set webhook untuk sesi tertentu
+  ```json
+  {
+    "url": "https://your-webhook-url.com"
+  }
+  ```
+- `GET /webhook/status` - Cek status webhook (global & per-sesi)
+
 ### Utility
 - `GET /utility/groups/:sessionId` - Daftar grup & peserta
 - `POST /utility/check-number` - Cek status nomor WhatsApp
@@ -105,28 +115,50 @@ npm run start
 LOG_LEVEL=info
 ```
 
-Level hierarchy:
-- trace: Most detailed logging
-- debug: Debugging information
-- info: General information (default)
-- warn: Warning messages
-- error: Error messages
-- fatal: Critical errors
+### Queue Configuration
+```env
+# Queue settings (default)
+QUEUE_BATCH_SIZE=5
+QUEUE_BATCH_DELAY=1000
+QUEUE_MAX_RETRIES=3
+QUEUE_RETRY_DELAY=2000
+QUEUE_TIMEOUT=30000
+```
+
+### Webhook Configuration
+```env
+# Global webhook URL (optional)
+GLOBAL_WEBHOOK_URL=https://your-webhook-url.com
+```
 
 ## 🔄 Update Terbaru
 
-### 1. Peningkatan Stabilitas
+### 1. Sistem Antrian
+- Implementasi antrian untuk pengiriman pesan batch
+- Konfigurasi batch size dan delay yang fleksibel
+- Sistem retry otomatis untuk pesan gagal
+- Monitoring status antrian
+- Pemisahan antrian per sesi WhatsApp
+
+### 2. Sistem Webhook
+- Webhook global dan per-sesi
+- Event untuk pesan masuk dan status koneksi
+- Penyimpanan konfigurasi webhook ke file
+- Format payload yang terstruktur
+- Logging untuk monitoring
+
+### 3. Peningkatan Stabilitas
 - Perbaikan error handling untuk error 515
 - Sistem reconnection yang lebih handal
 - Timeout dan cleanup yang optimal
 - Logging yang lebih informatif dengan format [sessionId]
 
-### 2. Fitur Utility
+### 4. Fitur Utility
 - Endpoint groups dengan informasi lengkap (peserta, admin, pengaturan)
 - Verifikasi nomor WhatsApp yang lebih akurat
 - Format nomor otomatis (08/+62 -> 62)
 
-### 3. Optimasi
+### 5. Optimasi
 - Penyederhanaan path resolver
 - Cleanup sesi yang lebih menyeluruh
 - Penanganan memory leak yang lebih baik
@@ -145,3 +177,75 @@ Kontribusi selalu diterima! Silakan buat pull request atau laporkan issues jika 
 ## 📜 Lisensi
 
 Proyek ini dilisensikan di bawah [MIT License](LICENSE).
+
+## Webhook
+
+Sistem webhook memungkinkan Anda untuk menerima notifikasi real-time tentang:
+- Pesan masuk
+- Status koneksi
+- QR Code generation
+- Perubahan status sesi
+
+### Format Webhook
+
+1. Pesan Masuk:
+```json
+{
+  "type": "message",
+  "sessionId": "session1",
+  "message": {
+    "key": {
+      "remoteJid": "6281234567890@s.whatsapp.net",
+      "id": "1234567890"
+    },
+    "message": {
+      "conversation": "Hello World!"
+    }
+  }
+}
+```
+
+2. Status Koneksi:
+```json
+{
+  "type": "connection",
+  "sessionId": "session1",
+  "status": "open",
+  "qr": "base64_qr_code" // Jika ada
+}
+```
+
+### Contoh Implementasi Webhook
+
+Silahkan lihat contoh implementasi webhook di [examples/webhook-receiver.js](examples/webhook-receiver.js)
+
+### Menggunakan Webhook
+
+1. Set webhook URL untuk sesi tertentu:
+```bash
+curl -X POST http://localhost:3000/webhook/set/session1 \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-api-key" \
+  -d '{"url": "http://your-webhook-url/webhook"}'
+```
+
+2. Cek status webhook:
+```bash
+curl http://localhost:3000/webhook/status
+```
+
+3. Jalankan webhook receiver (contoh menggunakan Node.js):
+```bash
+cd examples
+npm install express body-parser
+node webhook-receiver.js
+```
+
+## Sistem Antrian
+
+Sistem menggunakan antrian untuk mengatur pengiriman pesan dengan konfigurasi:
+- Batch size: 5 pesan
+- Delay: 1 detik antar batch
+- Max retries: 3x
+- Retry delay: 2 detik
+- Timeout: 30 detik

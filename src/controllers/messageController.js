@@ -1,5 +1,6 @@
 const Joi = require("joi");
 const whatsappService = require("../services/whatsappService");
+const queueService = require("../services/queueService");
 const { categorizeFile } = require("../utils/general");
 const { sendResponse } = require("../utils/response");
 const httpStatusCode = require("../constants/httpStatusCode");
@@ -105,7 +106,11 @@ module.exports = {
           );
         }
 
-        console.log(`[${sender}] Sending message to ${formattedReceivers[0]}`);
+        logger.info({
+          msg: `[${sender}] Sending message to ${formattedReceivers[0]}`,
+        });
+
+        // Kirim pesan (sudah menggunakan antrian di whatsappService)
         const sendResult = await whatsappService.sendMessage(
           client,
           formattedReceivers[0],
@@ -121,9 +126,9 @@ module.exports = {
       }
       // Kirim ke banyak penerima
       else {
-        console.log(
-          `[${sender}] Sending message to ${formattedReceivers.length} receivers`
-        );
+        logger.info({
+          msg: `[${sender}] Sending message to ${formattedReceivers.length} receivers`,
+        });
 
         const results = [];
         const invalidNumbers = [];
@@ -142,7 +147,7 @@ module.exports = {
             results.push({
               receiver,
               messageId: sendResult?.key?.id || null,
-              status: "sent",
+              status: "queued",
             });
           } catch (error) {
             results.push({
@@ -151,16 +156,13 @@ module.exports = {
               status: "failed",
             });
           }
-
-          // Delay antar pengiriman untuk menghindari spam
-          await new Promise((resolve) => setTimeout(resolve, 1000));
         });
 
         await Promise.all(sendPromises);
 
         result = {
           total: formattedReceivers.length,
-          success: results.filter((r) => r.status === "sent").length,
+          queued: results.filter((r) => r.status === "queued").length,
           failed: results.filter((r) => r.status === "failed").length,
           invalid: invalidNumbers.length,
           details: {
@@ -168,24 +170,24 @@ module.exports = {
             invalidNumbers,
           },
         };
-        console.log(
-          `[${sender}] Message successfully sent to ${results.length} receivers`,
-          results
-        );
       }
 
       return sendResponse(
         res,
         httpStatusCode.OK,
-        "Message sent successfully",
+        "Message queued successfully",
         result
       );
     } catch (error) {
-      console.error(`[${sender}] Error sending message:`, error);
+      logger.error({
+        msg: `[${sender}] Error queueing message`,
+        error: error.message,
+        stack: error.stack,
+      });
       return sendResponse(
         res,
         httpStatusCode.INTERNAL_SERVER_ERROR,
-        "Failed to send message",
+        "Failed to queue message",
         null,
         error
       );
