@@ -229,7 +229,7 @@ const createSession = async (sessionId, isLegacy = false, res = null) => {
     client.ev.on("messages.upsert", async (m) => {
       if (m.type === "notify") {
         for (const msg of m.messages) {
-          if (!msg.key.fromMe) {
+          if (!msg.key.fromMe && !msg.broadcast) {
             logger.info({
               msg: `Pesan baru diterima`,
               sessionId,
@@ -237,10 +237,26 @@ const createSession = async (sessionId, isLegacy = false, res = null) => {
               messageId: msg.key.id,
             });
 
-            // Kirim ke webhook
+            // Kirim ke webhook jika bukan pesan broadcast
+            const isGroup = msg.key.remoteJid.endsWith("@g.us");
+            const sender = !isGroup ? msg.key.remoteJid : msg.key.participant;
+            const message =
+              msg.message?.conversation ||
+              msg.message?.extendedTextMessage?.text;
+            const quotedMessage =
+              msg.message?.extendedTextMessage?.contextInfo?.quotedMessage
+                ?.conversation;
+
             webhookService.sendToWebhook(sessionId, {
               type: "message",
-              message: msg,
+              message: {
+                id: msg.key.id,
+                isGroup: isGroup,
+                remoteJid: msg.key.remoteJid,
+                sender: sender,
+                message: message,
+                quotedMessage: quotedMessage,
+              },
             });
           }
         }

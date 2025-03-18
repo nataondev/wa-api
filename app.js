@@ -9,7 +9,7 @@ const logger = require("./src/utils/logger");
 
 const app = express();
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.APP_PORT || 3000;
 const HOST = process.env.NODE_ENV === "production" ? "0.0.0.0" : "localhost";
 
 app.use(cors());

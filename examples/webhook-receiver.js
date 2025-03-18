@@ -18,6 +18,9 @@ app.post("/webhook", (req, res) => {
     const data = req.body;
     console.log("Webhook Data:", JSON.stringify(data, null, 2));
 
+    // Validasi data
+    validateWebhookData(data);
+
     // Cek tipe webhook
     switch (data.type) {
       case "message":
@@ -27,32 +30,41 @@ app.post("/webhook", (req, res) => {
         handleConnectionWebhook(data);
         break;
       default:
-        console.log("Unknown webhook type:", data.type);
+        throw new Error(`Unknown webhook type: ${data.type}`);
     }
 
     // Kirim response sukses
     res.status(200).json({
       status: true,
       message: "Webhook received successfully",
+      timestamp: new Date().toISOString(),
     });
   } catch (error) {
     console.error("Error processing webhook:", error);
-    res.status(500).json({
+    res.status(400).json({
       status: false,
       message: "Error processing webhook",
       error: error.message,
+      timestamp: new Date().toISOString(),
     });
   }
 });
 
 // Handler untuk webhook pesan
 function handleMessageWebhook(data) {
-  const { sessionId, message } = data;
+  const { sessionId } = data;
+  const msgObj = data.message;
+  const { id, isGroup, remoteJid, sender, message, quotedMessage } = msgObj;
+
   console.log(`[${sessionId}] New message received:`);
-  console.log("- From:", message.key.remoteJid);
-  console.log("- Message ID:", message.key.id);
-  console.log("- Type:", message.message?.conversation ? "text" : "media");
-  console.log("- Content:", message.message?.conversation || "Media message");
+  console.log("- Message ID:", id);
+  console.log("- From:", remoteJid);
+  console.log("- Sender:", sender);
+  console.log("- Is Group:", isGroup);
+  console.log("- Message:", message || "Media message");
+  if (quotedMessage) {
+    console.log("- Quoted Message:", quotedMessage);
+  }
 }
 
 // Handler untuk webhook koneksi
@@ -81,6 +93,7 @@ app.use((err, req, res, next) => {
     status: false,
     message: "Internal server error",
     error: err.message,
+    timestamp: new Date().toISOString(),
   });
 });
 
