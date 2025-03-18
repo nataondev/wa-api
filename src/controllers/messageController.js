@@ -98,18 +98,21 @@ module.exports = {
       let result;
       // Kirim ke satu penerima
       if (formattedReceivers.length === 1) {
-        // Periksa apakah nomor valid
+        // Periksa apakah nomor valid, kecuali untuk grup
         try {
-          const isValid = await whatsappService.isExists(
-            client,
-            formattedReceivers[0]
-          );
-          if (!isValid) {
-            return sendResponse(
-              res,
-              httpStatusCode.BAD_REQUEST,
-              "Invalid phone number"
+          // Skip pengecekan jika tujuannya adalah grup (ditandai dengan @g.us di akhir)
+          if (!formattedReceivers[0].endsWith("@g.us")) {
+            const isValid = await whatsappService.isExists(
+              client,
+              formattedReceivers[0]
             );
+            if (!isValid) {
+              return sendResponse(
+                res,
+                httpStatusCode.BAD_REQUEST,
+                "Invalid phone number"
+              );
+            }
           }
         } catch (error) {
           logger.warn({
@@ -175,11 +178,13 @@ module.exports = {
         // Gunakan Promise.all untuk pengecekan dan pengiriman asinkron
         const sendPromises = formattedReceivers.map(async (receiver) => {
           try {
-            // Periksa nomor telepon
-            const isValid = await whatsappService.isExists(client, receiver);
-            if (!isValid) {
-              invalidNumbers.push(receiver);
-              return;
+            // Periksa nomor telepon kecuali untuk grup
+            if (!receiver.endsWith("@g.us")) {
+              const isValid = await whatsappService.isExists(client, receiver);
+              if (!isValid) {
+                invalidNumbers.push(receiver);
+                return;
+              }
             }
 
             // Kirim pesan
