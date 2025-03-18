@@ -46,8 +46,7 @@ npm install
 2. Salin file .env.example ke .env dan sesuaikan:
 ```env
 NODE_ENV=local
-APP_URL=127.0.0.1
-APP_PORT=3000
+PORT=3000
 ENABLE_API_KEY=true
 API_KEY=your_api_key
 LOG_LEVEL=info
