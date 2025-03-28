@@ -86,6 +86,32 @@ else
     echo "📍 Region saat ini: $CURRENT_REGION"
 fi
 
+# Menambahkan Redis add-on
+echo "⚙️ Menambahkan Redis add-on..."
+echo "Pilih tier Redis:"
+echo "1) hobby-dev (Free - 25MB)"
+echo "2) premium-0 (Berbayar - 50MB)"
+read -p "Pilihan Anda (1/2): " REDIS_CHOICE
+
+case $REDIS_CHOICE in
+    1)
+        echo "🔄 Menambahkan Redis hobby-dev..."
+        heroku addons:create heroku-redis:hobby-dev -a "$APP_NAME"
+        ;;
+    2)
+        echo "🔄 Menambahkan Redis premium-0..."
+        heroku addons:create heroku-redis:premium-0 -a "$APP_NAME"
+        ;;
+    *)
+        echo "⚠️ Pilihan tidak valid. Menggunakan hobby-dev..."
+        heroku addons:create heroku-redis:hobby-dev -a "$APP_NAME"
+        ;;
+esac
+
+# Menunggu Redis siap
+echo "⏳ Menunggu Redis siap..."
+sleep 10
+
 # Set environment variables
 echo "⚙️ Mengatur environment variables..."
 heroku config:set NODE_ENV=production -a "$APP_NAME"
@@ -102,10 +128,15 @@ git push heroku main
 echo "⚙️ Memastikan aplikasi berjalan..."
 heroku ps:scale web=1 -a "$APP_NAME"
 
+# Cek status Redis
+echo "📊 Mengecek status Redis..."
+heroku redis:info -a "$APP_NAME"
+
 # Membuka aplikasi
 echo "🌐 Membuka aplikasi di browser..."
 heroku open -a "$APP_NAME"
 
 echo "✅ Deployment selesai!"
 echo "📱 Aplikasi Anda dapat diakses di: https://$APP_NAME.herokuapp.com"
-echo "📝 Dokumentasi API tersedia di: https://$APP_NAME.herokuapp.com/docs" 
+echo "📝 Dokumentasi API tersedia di: https://$APP_NAME.herokuapp.com/docs"
+echo "💡 Untuk memonitor Redis: heroku redis:metrics -a $APP_NAME" 

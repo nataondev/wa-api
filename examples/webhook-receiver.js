@@ -1,7 +1,10 @@
 const express = require("express");
 const bodyParser = require("body-parser");
 const app = express();
-const port = 3001; // Port berbeda dari server utama
+const port = 3001;
+
+// Secret key yang didapat saat setup webhook
+const WEBHOOK_SECRET = "1c2rr1jn8fa";
 
 // Middleware untuk parsing JSON
 app.use(bodyParser.json());
@@ -9,28 +12,34 @@ app.use(bodyParser.json());
 // Middleware untuk logging request
 app.use((req, res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  if (req.method === "POST") {
+    // console.log("Headers:", JSON.stringify(req.headers, null, 2));
+  }
   next();
 });
 
 // Endpoint untuk menerima webhook
 app.post("/webhook", (req, res) => {
   try {
+    const secret = req.headers["x-webhook-secret"];
     const data = req.body;
+
+    // Verifikasi secret key
+    if (!secret || secret !== WEBHOOK_SECRET) {
+      throw new Error("Invalid webhook secret");
+    }
+
+    // Log data webhook
     console.log("Webhook Data:", JSON.stringify(data, null, 2));
 
-    // Validasi data
-    validateWebhookData(data);
+    // Handle webhook data
+    const { sessionId, type, message, status } = data;
+    console.log(`[${sessionId}] Received ${type} webhook:`);
 
-    // Cek tipe webhook
-    switch (data.type) {
-      case "message":
-        handleMessageWebhook(data);
-        break;
-      case "connection":
-        handleConnectionWebhook(data);
-        break;
-      default:
-        throw new Error(`Unknown webhook type: ${data.type}`);
+    if (type === "message") {
+      console.log("Data:", JSON.stringify(message, null, 2));
+    } else if (type === "connection") {
+      console.log("Data:", JSON.stringify(status, null, 2));
     }
 
     // Kirim response sukses
@@ -41,7 +50,7 @@ app.post("/webhook", (req, res) => {
     });
   } catch (error) {
     console.error("Error processing webhook:", error);
-    res.status(400).json({
+    res.status(error.message === "Invalid webhook secret" ? 401 : 400).json({
       status: false,
       message: "Error processing webhook",
       error: error.message,
@@ -49,33 +58,6 @@ app.post("/webhook", (req, res) => {
     });
   }
 });
-
-// Handler untuk webhook pesan
-function handleMessageWebhook(data) {
-  const { sessionId } = data;
-  const msgObj = data.message;
-  const { id, isGroup, remoteJid, sender, message, quotedMessage } = msgObj;
-
-  console.log(`[${sessionId}] New message received:`);
-  console.log("- Message ID:", id);
-  console.log("- From:", remoteJid);
-  console.log("- Sender:", sender);
-  console.log("- Is Group:", isGroup);
-  console.log("- Message:", message || "Media message");
-  if (quotedMessage) {
-    console.log("- Quoted Message:", quotedMessage);
-  }
-}
-
-// Handler untuk webhook koneksi
-function handleConnectionWebhook(data) {
-  const { sessionId, status, qr } = data;
-  console.log(`[${sessionId}] Connection update:`);
-  console.log("- Status:", status);
-  if (qr) {
-    console.log("- QR Code available");
-  }
-}
 
 // Endpoint untuk mengecek status webhook
 app.get("/webhook/status", (req, res) => {
@@ -103,4 +85,6 @@ app.listen(port, () => {
   console.log("Available endpoints:");
   console.log("- POST /webhook - Receive webhook data");
   console.log("- GET /webhook/status - Check webhook status");
+  console.log("\nWebhook will verify using X-Webhook-Secret header");
+  console.log("Make sure to set WEBHOOK_SECRET environment variable");
 });

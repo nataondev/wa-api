@@ -1,13 +1,12 @@
-const express = require("express");
-const router = express.Router();
+const router = require("express").Router();
 const webhookService = require("../services/webhookService");
-const logger = require("../utils/logger");
 const apikeyValidator = require("../middlewares/apikeyValidator");
+const logger = require("../utils/logger");
 
 router.post("/set/:sessionId", [apikeyValidator], async (req, res) => {
   try {
     const { sessionId } = req.params;
-    const { url } = req.body;
+    const { url, secretKey, enabled = true } = req.body;
 
     if (!url) {
       return res.status(400).json({
@@ -16,7 +15,14 @@ router.post("/set/:sessionId", [apikeyValidator], async (req, res) => {
       });
     }
 
-    const result = await webhookService.setSessionWebhook(sessionId, url);
+    const result = await webhookService.setWebhook(sessionId, url, {
+      secretKey,
+      enabled: enabled,
+      retryCount: 0,
+      lastFailedAt: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
 
     return res.status(200).json({
       status: true,
@@ -38,9 +44,10 @@ router.post("/set/:sessionId", [apikeyValidator], async (req, res) => {
   }
 });
 
-router.get("/status", [apikeyValidator], async (req, res) => {
+router.get("/status/:sessionId", [apikeyValidator], async (req, res) => {
   try {
-    const status = webhookService.getStatus();
+    const { sessionId } = req.params;
+    const status = await webhookService.checkHealth(sessionId);
 
     return res.status(200).json({
       status: true,

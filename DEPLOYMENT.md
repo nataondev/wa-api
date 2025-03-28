@@ -4,6 +4,12 @@ Dokumen ini berisi panduan lengkap untuk mendeploy WhatsApp API ke berbagai plat
 
 ## Heroku Deployment
 
+### Prasyarat
+- Heroku CLI terinstall
+- Git terinstall
+- Akun Heroku aktif
+- Kartu kredit terdaftar di Heroku (diperlukan untuk add-on Redis, meski menggunakan free tier)
+
 ### Metode Quick Deploy
 1. Install Heroku CLI:
 ```bash
@@ -44,22 +50,49 @@ heroku regions
 heroku create your-app-name --region eu
 ```
 
-3. Set environment variables:
+3. Tambahkan Redis add-on:
+```bash
+# Menambahkan Redis (free tier)
+heroku addons:create heroku-redis:hobby-dev
+
+# Atau untuk production (berbayar)
+heroku addons:create heroku-redis:premium-0
+```
+
+4. Set environment variables:
 ```bash
 heroku config:set NODE_ENV=production
 heroku config:set ENABLE_API_KEY=true
 heroku config:set API_KEY=your_api_key
+# Redis URL akan otomatis ditambahkan sebagai REDIS_URL
 ```
 
-4. Deploy aplikasi:
+5. Deploy aplikasi:
 ```bash
 git push heroku main
 ```
 
-5. Pastikan minimal 1 dyno berjalan:
+6. Pastikan minimal 1 dyno berjalan:
 ```bash
 heroku ps:scale web=1
 ```
+
+### Redis Configuration
+
+#### Free Tier (hobby-dev)
+- Memory: 25MB
+- Connections: 20
+- Tidak ada persistence
+- Cocok untuk development
+
+#### Premium Tier
+- Premium-0: 50MB RAM
+- Premium-2: 100MB RAM
+- Premium-3: 250MB RAM
+- Premium-4: 500MB RAM
+- Mendukung persistence
+- Backup otomatis
+- Monitoring dashboard
 
 ### Region Availability
 
@@ -112,22 +145,37 @@ heroku metrics:web
 heroku ps:scale web=1:standard-1x
 ```
 
+4. Redis Connection Issues:
+```bash
+# Check Redis status
+heroku redis:info
+
+# Reset Redis connection
+heroku redis:restart
+
+# Monitor Redis metrics
+heroku redis:metrics
+```
+
 ## Platform Alternatif
 
 ### 1. Railway
 - Region: Singapore available
 - Latency: ~50-100ms
 - Free tier: Available
+- Redis: Tersedia sebagai add-on
 - Quick Deploy:
   ```bash
   railway init
   railway up
+  # Tambahkan Redis dari dashboard
   ```
 
 ### 2. Render
 - Region: Singapore available
 - Latency: ~50-100ms
-- Free tier: Available
+- Free tier: Available (tidak termasuk Redis)
+- Redis: Berbayar, mulai dari $10/bulan
 - Auto deploy from GitHub
 - [Panduan Lengkap Render](https://render.com/docs)
 
@@ -135,6 +183,7 @@ heroku ps:scale web=1:standard-1x
 - Region: Singapore available
 - Latency: ~50-100ms
 - Free tier: 3 shared-cpu-1x VMs
+- Redis: Via Upstash atau self-hosted
 - Deploy:
   ```bash
   flyctl launch
@@ -146,5 +195,6 @@ heroku ps:scale web=1:standard-1x
 - Region: Singapore (sgp1)
 - Latency: ~30-70ms
 - Starting: $5/month
+- Redis: Managed Database mulai $15/bulan
 - Managed SSL & custom domains
 - [Panduan DO App Platform](https://www.digitalocean.com/docs/app-platform/) 

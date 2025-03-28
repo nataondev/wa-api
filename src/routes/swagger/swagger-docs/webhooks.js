@@ -1,24 +1,27 @@
 /**
  * @swagger
  * tags:
- *   name: Webhooks
- *   description: API Endpoint untuk manajemen webhook
+ *   name: Webhook
+ *   description: Endpoint untuk manajemen webhook
  */
 
 /**
  * @swagger
  * /webhook/set/{sessionId}:
  *   post:
- *     summary: Mengatur webhook URL untuk sesi tertentu
- *     tags: [Webhooks]
+ *     summary: Mengatur webhook untuk session tertentu
+ *     description: |
+ *       Mengatur webhook URL untuk session tertentu dengan konfigurasi keamanan.
+ *       Webhook akan menerima notifikasi dengan secret key untuk verifikasi.
+ *     tags: [Webhook]
  *     parameters:
  *       - in: path
  *         name: sessionId
  *         required: true
  *         schema:
  *           type: string
- *         example: "session_id_1"
- *         description: "ID sesi WhatsApp"
+ *           example: session_id_1
+ *         description: ID session WhatsApp
  *     requestBody:
  *       required: true
  *       content:
@@ -31,8 +34,17 @@
  *               url:
  *                 type: string
  *                 format: uri
- *                 example: "https://your-webhook-url.com/webhook"
- *                 description: "URL webhook yang akan menerima notifikasi"
+ *                 description: URL webhook yang akan menerima notifikasi
+ *               secretKey:
+ *                 type: string
+ *                 description: Secret key untuk signing payload (opsional, akan digenerate jika tidak disediakan)
+ *               enabled:
+ *                 type: boolean
+ *                 description: Status aktif webhook (default true)
+ *           example:
+ *             url: "https://example.com/webhook"
+ *             secretKey: "your-secret-key"
+ *             enabled: true
  *     responses:
  *       200:
  *         description: Webhook berhasil diatur
@@ -50,67 +62,54 @@
  *                 data:
  *                   type: object
  *                   properties:
- *                     sessionId:
+ *                     url:
  *                       type: string
- *                       example: "session_id_1"
- *                     webhook:
+ *                       example: "https://example.com/webhook"
+ *                     secretKey:
  *                       type: string
- *                       example: "https://your-webhook-url.com/webhook"
+ *                       example: "generated-or-provided-secret-key"
+ *                     enabled:
+ *                       type: boolean
+ *                       example: true
+ *                     retryCount:
+ *                       type: integer
+ *                       example: 0
+ *                     lastFailedAt:
+ *                       type: string
+ *                       format: date-time
+ *                       nullable: true
+ *                       example: null
+ *                     createdAt:
+ *                       type: string
+ *                       format: date-time
+ *                       example: "2024-03-28T00:00:00Z"
+ *                     updatedAt:
+ *                       type: string
+ *                       format: date-time
+ *                       example: "2024-03-28T00:00:00Z"
  *       400:
- *         description: URL webhook tidak valid
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 status:
- *                   type: boolean
- *                   example: false
- *                 message:
- *                   type: string
- *                   example: "URL webhook tidak valid"
- *       404:
- *         description: Sesi tidak ditemukan
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 status:
- *                   type: boolean
- *                   example: false
- *                 message:
- *                   type: string
- *                   example: "Session tidak ditemukan"
+ *         description: URL webhook tidak valid atau parameter tidak lengkap
+ *       401:
+ *         description: API key tidak valid
  *       500:
- *         description: Gagal mengatur webhook
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 status:
- *                   type: boolean
- *                   example: false
- *                 message:
- *                   type: string
- *                   example: "Gagal mengatur webhook"
- *                 error:
- *                   type: string
- *                   example: "Internal server error"
- */
-
-/**
- * @swagger
- * /webhook/status:
+ *         description: Server error
+ *
+ * /webhook/status/{sessionId}:
  *   get:
- *     summary: Memeriksa status webhook
- *     tags: [Webhooks]
- *     security:
- *       - ApiKeyAuth: []
+ *     summary: Cek status webhook
+ *     description: Mendapatkan status dan konfigurasi webhook untuk session tertentu
+ *     tags: [Webhook]
+ *     parameters:
+ *       - in: path
+ *         name: sessionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           example: session_id_1
+ *         description: ID session WhatsApp
  *     responses:
  *       200:
- *         description: Status webhook berhasil diambil
+ *         description: Status webhook berhasil didapatkan
  *         content:
  *           application/json:
  *             schema:
@@ -122,46 +121,37 @@
  *                 data:
  *                   type: object
  *                   properties:
- *                     globalWebhook:
+ *                     status:
  *                       type: string
+ *                       enum: [healthy, unhealthy, not_configured]
+ *                       example: healthy
+ *                     url:
+ *                       type: string
+ *                       example: "https://example.com/webhook"
+ *                     enabled:
+ *                       type: boolean
+ *                       example: true
+ *                     retryCount:
+ *                       type: integer
+ *                       example: 0
+ *                     lastFailedAt:
+ *                       type: string
+ *                       format: date-time
  *                       nullable: true
- *                       example: "https://your-global-webhook-url.com/webhook"
- *                       description: "Webhook global untuk semua sesi"
- *                     sessionWebhooks:
- *                       type: object
- *                       additionalProperties:
- *                         type: string
- *                       example:
- *                         session_id_1: "https://your-session-webhook-url.com/webhook"
- *                         session_id_2: "https://your-session-webhook-url.com/webhook"
- *                       description: "Mapping ID sesi ke URL webhook"
+ *                       example: null
+ *                     createdAt:
+ *                       type: string
+ *                       format: date-time
+ *                       example: "2024-03-28T00:00:00Z"
+ *                     updatedAt:
+ *                       type: string
+ *                       format: date-time
+ *                       example: "2024-03-28T00:00:00Z"
+ *                     error:
+ *                       type: string
+ *                       example: null
  *       401:
- *         description: Unauthorized - API Key tidak valid
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 status:
- *                   type: boolean
- *                   example: false
- *                 message:
- *                   type: string
- *                   example: "API Key tidak valid"
+ *         description: API key tidak valid
  *       500:
- *         description: Gagal mendapatkan status webhook
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 status:
- *                   type: boolean
- *                   example: false
- *                 message:
- *                   type: string
- *                   example: "Gagal mendapatkan status webhook"
- *                 error:
- *                   type: string
- *                   example: "Internal server error"
+ *         description: Server error
  */

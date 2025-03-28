@@ -98,27 +98,36 @@ const cleanupSession = async (sessionId) => {
   try {
     const session = sessions.get(sessionId);
     if (session) {
-      logger.info({
-        msg: "Starting session cleanup",
-        sessionId,
-      });
-
-      session.ev.removeAllListeners("connection.update");
-      session.ev.removeAllListeners("creds.update");
-      session.ev.removeAllListeners("chats.set");
-      session.ev.removeAllListeners("messages.update");
-
-      await session.ws.close();
-
-      if (session.store) {
-        session.store.writeToFile(sessionsDir(sessionId + "_store.json"));
-        logger.info({
-          msg: "Store saved to file",
-          sessionId,
-        });
+      // Clear interval
+      if (session.storeInterval) {
+        clearInterval(session.storeInterval);
       }
 
+      // Simpan metadata terakhir kali
+      if (session.store) {
+        try {
+          const storePath = sessionsDir(`${sessionId}_store.json`);
+          await session.store.writeToFile(storePath);
+          logger.info({
+            msg: "Final group metadata store saved",
+            sessionId,
+            path: storePath,
+          });
+        } catch (error) {
+          logger.error({
+            msg: "Failed to save final group metadata",
+            sessionId,
+            error: error.message,
+            stack: error.stack,
+          });
+        }
+      }
+
+      // Cleanup lainnya
+      session.ev.removeAllListeners();
+      await session.ws.close();
       sessions.delete(sessionId);
+
       logger.info({
         msg: "Session cleaned up successfully",
         sessionId,
@@ -181,7 +190,6 @@ const checkAndCleanSessionFolder = (sessionId) => {
 
 const createSession = async (sessionId, isLegacy = false, res = null) => {
   try {
-    // Log start creating session
     logger.info({
       msg: `Starting session creation`,
       sessionId,
@@ -191,7 +199,17 @@ const createSession = async (sessionId, isLegacy = false, res = null) => {
     await checkAndCleanSessionFolder(sessionId);
     await cleanupSession(sessionId);
 
-    const store = makeInMemoryStore({ logger: pino({ level: "silent" }) });
+    // Optimasi store hanya untuk group metadata
+    const store = makeInMemoryStore({
+      logger: pino({ level: "silent" }),
+      path: sessionsDir(`${sessionId}_store.json`),
+      maxCachedMessages: 0,
+      maxCachedGroups: parseInt(process.env.MAX_CACHED_GROUPS || "100", 10),
+    });
+
+    // Baca existing store jika ada
+    store.readFromFile(sessionsDir(`${sessionId}_store.json`));
+
     const { state, saveCreds } = await useMultiFileAuthState(
       sessionsDir(`md_${sessionId}`)
     );
@@ -201,26 +219,63 @@ const createSession = async (sessionId, isLegacy = false, res = null) => {
       browser: Browsers.ubuntu("Chrome"),
       auth: state,
       logger: pino({ level: "silent" }),
+      cachedGroupMetadata: async (jid) => {
+        try {
+          const metadata = await client.groupMetadata(jid);
+          return metadata;
+        } catch (error) {
+          logger.error({
+            msg: "Error getting group metadata",
+            jid,
+            error: error.message,
+            stack: error.stack,
+          });
+          return null;
+        }
+      },
     });
 
+    // Bind store ke client
     store.bind(client.ev);
 
-    // Simpan session
-    logger.info({
-      msg: `Creating session object for ${sessionId}`,
-      isLegacy,
-      sessionId,
+    // Optimize store saving interval (setiap 5 menit)
+    const storeInterval = setInterval(() => {
+      try {
+        store.writeToFile(sessionsDir(`${sessionId}_store.json`));
+        logger.info({
+          msg: "Store saved",
+          sessionId,
+        });
+      } catch (error) {
+        logger.error({
+          msg: "Failed to save store",
+          sessionId,
+          error: error.message,
+        });
+      }
+    }, 5 * 60 * 1000);
+
+    // Simpan session dengan store
+    sessions.set(sessionId, {
+      ...client,
+      store,
+      storeInterval,
     });
 
-    // Pastikan semua fungsi client Baileys tersedia
-    sessions.set(sessionId, client);
+    // Cleanup handler yang lebih efisien
+    const cleanupHandler = async () => {
+      const session = sessions.get(sessionId);
+      if (session) {
+        clearInterval(session.storeInterval);
+        if (session.store) {
+          await session.store.writeToFile();
+        }
+      }
+    };
 
-    // Tambahkan store sebagai properti terpisah
-    const storedSession = sessions.get(sessionId);
-    if (storedSession) {
-      storedSession.store = store;
-      storedSession.isLegacy = isLegacy;
-    }
+    // Tambahkan cleanup handler
+    process.on("SIGTERM", cleanupHandler);
+    process.on("SIGINT", cleanupHandler);
 
     let connectionTimeout;
     let hasResponded = false;
@@ -229,7 +284,10 @@ const createSession = async (sessionId, isLegacy = false, res = null) => {
     client.ev.on("messages.upsert", async (m) => {
       if (m.type === "notify") {
         for (const msg of m.messages) {
-          if (!msg.key.fromMe && !msg.broadcast) {
+          const isFromMe = msg.key.fromMe;
+          const isBroadcast = msg.broadcast;
+          const hasNoStickerMessage = msg.stickerMessage?.url === "";
+          if ((!isFromMe && !isBroadcast) || hasNoStickerMessage) {
             logger.info({
               msg: `Pesan baru diterima`,
               sessionId,
@@ -237,25 +295,27 @@ const createSession = async (sessionId, isLegacy = false, res = null) => {
               messageId: msg.key.id,
             });
 
-            // Kirim ke webhook jika bukan pesan broadcast
+            // Kirim ke webhook dengan format yang sesuai dengan webhookService lama
             const isGroup = msg.key.remoteJid.endsWith("@g.us");
             const sender = !isGroup ? msg.key.remoteJid : msg.key.participant;
-            const message =
+            const text =
               msg.message?.conversation ||
               msg.message?.extendedTextMessage?.text;
-            const quotedMessage =
+            const quotedText =
               msg.message?.extendedTextMessage?.contextInfo?.quotedMessage
                 ?.conversation;
 
             webhookService.sendToWebhook(sessionId, {
+              sessionId,
+              timestamp: Date.now(),
               type: "message",
               message: {
                 id: msg.key.id,
                 isGroup: isGroup,
                 remoteJid: msg.key.remoteJid,
                 sender: sender,
-                message: message,
-                quotedMessage: quotedMessage,
+                text,
+                quotedText,
               },
             });
           }
@@ -280,6 +340,7 @@ const createSession = async (sessionId, isLegacy = false, res = null) => {
 
         // Kirim status koneksi ke webhook
         webhookService.sendToWebhook(sessionId, {
+          sessionId,
           type: "connection",
           status: connection,
           qr: qr,
@@ -428,6 +489,14 @@ const createSession = async (sessionId, isLegacy = false, res = null) => {
         type: "creds",
       });
       saveCreds();
+    });
+
+    // Tambahkan event listener untuk chats
+    client.ev.on("chats.set", async () => {
+      if (store) {
+        // Force update store
+        store.writeToFile(sessionsDir(`${sessionId}_store.json`));
+      }
     });
 
     return client;
@@ -669,13 +738,7 @@ const groupFetchAllParticipating = (client) => {
 
 const queueService = require("./queueService");
 
-const sendMessage = async (
-  client,
-  chatId,
-  message,
-  delayTime = 5,
-  showTyping = true
-) => {
+const sendMessage = async (client, chatId, message, showTyping = true) => {
   try {
     // Perbaikan: Gunakan Array.from(sessions.entries()) untuk mencari sessionId dari Map
     const sessionEntry = Array.from(sessions.entries()).find(
@@ -810,6 +873,19 @@ const formatPhone = (phoneNumber) => {
 
 const formatGroup = (groupId) => groupId.replace(/[^\d-]/g, "") + "@g.us";
 
+const backupStore = async (sessionId) => {
+  const storePath = sessionsDir(`${sessionId}_store.json`);
+  const backupPath = sessionsDir(`${sessionId}_store.backup.json`);
+
+  if (fs.existsSync(storePath)) {
+    fs.copyFileSync(storePath, backupPath);
+    logger.info({
+      msg: "Store backup created",
+      sessionId,
+    });
+  }
+};
+
 const cleanup = async () => {
   logger.info({
     msg: "Running cleanup before exit",
@@ -819,15 +895,16 @@ const cleanup = async () => {
   // Bersihkan semua queue
   await queueService.clearAllQueues();
 
-  sessions.forEach((client, sessionId) => {
-    if (!client.isLegacy) {
-      client.store.writeToFile(sessionsDir(sessionId + "_store.json"));
+  for (const [sessionId, session] of sessions.entries()) {
+    await backupStore(sessionId);
+    if (!session.isLegacy) {
+      session.store.writeToFile(sessionsDir(sessionId + "_store.json"));
       logger.info({
         msg: "Store written to file",
         sessionId,
       });
     }
-  });
+  }
 };
 
 const init = () => {

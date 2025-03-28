@@ -1,177 +1,267 @@
-const axios = require("axios");
 const logger = require("../utils/logger");
-const fs = require("fs");
+const fs = require("fs").promises;
 const path = require("path");
+const axios = require("axios");
 
-class WebhookService {
-  constructor() {
-    // Endpoint global default
-    this.globalWebhook = process.env.GLOBAL_WEBHOOK_URL || null;
+const WEBHOOK_FILE = path.join(process.cwd(), "data", "webhook.json");
 
-    // Map untuk menyimpan webhook per sesi
-    this.sessionWebhooks = new Map();
+// Webhook URLs per session
+let webhookData = {
+  globalWebhook: null,
+  sessionWebhooks: {},
+};
 
-    // Path file webhook
-    this.webhookFilePath = path.join(__dirname, "../../data/webhook.json");
+// Inisialisasi data webhook dari file
+const initializeWebhookData = async () => {
+  try {
+    const data = await fs.readFile(WEBHOOK_FILE, "utf8");
+    webhookData = JSON.parse(data);
+    logger.info({
+      msg: "Webhook data loaded from file",
+    });
+  } catch (error) {
+    logger.warn({
+      msg: "Failed to load webhook data, using default",
+      error: error.message,
+    });
+    // Buat file baru jika tidak ada
+    await saveWebhookData();
+  }
+};
 
-    // Buat direktori data jika belum ada
-    const dataDir = path.dirname(this.webhookFilePath);
-    if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true });
-    }
+// Simpan data webhook ke file
+const saveWebhookData = async () => {
+  try {
+    await fs.writeFile(WEBHOOK_FILE, JSON.stringify(webhookData, null, 2));
+    logger.info({
+      msg: "Webhook data has been updated and saved to file",
+    });
+    return true;
+  } catch (error) {
+    logger.error({
+      msg: "Failed to update and save webhook data",
+      error: error.message,
+    });
+    return false;
+  }
+};
 
-    // Load webhook data saat startup
-    this.loadWebhookData();
+// Set webhook URL untuk session
+const setWebhook = async (sessionId, url, options = {}) => {
+  if (!url) {
+    return false;
   }
 
-  // Load webhook data dari file
-  loadWebhookData() {
-    try {
-      if (fs.existsSync(this.webhookFilePath)) {
-        const data = JSON.parse(fs.readFileSync(this.webhookFilePath, "utf8"));
+  try {
+    const webhookUrl = new URL(url);
+    const existingWebhook = webhookData.sessionWebhooks[sessionId];
 
-        // Restore session webhooks
-        if (data.sessionWebhooks) {
-          Object.entries(data.sessionWebhooks).forEach(([sessionId, url]) => {
-            this.sessionWebhooks.set(sessionId, url);
-          });
-        }
+    // Gunakan secret key yang sudah ada jika ada dan tidak di-override
+    const secretKey =
+      options.secretKey ||
+      (existingWebhook
+        ? existingWebhook.secretKey
+        : Math.random().toString(36).substring(2));
 
-        logger.info({
-          msg: "Webhook data loaded successfully",
-          sessionCount: this.sessionWebhooks.size,
-        });
+    // Set enabled status, default true jika tidak disebutkan
+    const enabled = options.hasOwnProperty("enabled") ? options.enabled : true;
+
+    // Determine retryCount and lastFailedAt
+    let retryCount = 0;
+    let lastFailedAt = null;
+
+    if (existingWebhook) {
+      if (enabled) {
+        // Reset counters if enabling
+        retryCount = 0;
+        lastFailedAt = null;
+      } else {
+        // Preserve existing values if disabling
+        retryCount = existingWebhook.retryCount || 0;
+        lastFailedAt = existingWebhook.lastFailedAt || null;
       }
-    } catch (error) {
-      logger.error({
-        msg: "Error loading webhook data",
-        error: error.message,
-        stack: error.stack,
-      });
-    }
-  }
-
-  // Simpan webhook data ke file
-  saveWebhookData() {
-    try {
-      const data = {
-        globalWebhook: this.globalWebhook,
-        sessionWebhooks: Object.fromEntries(this.sessionWebhooks),
-      };
-
-      fs.writeFileSync(this.webhookFilePath, JSON.stringify(data, null, 2));
-
-      logger.info({
-        msg: "Webhook data saved successfully",
-        sessionCount: this.sessionWebhooks.size,
-      });
-    } catch (error) {
-      logger.error({
-        msg: "Error saving webhook data",
-        error: error.message,
-        stack: error.stack,
-      });
-    }
-  }
-
-  // Mengatur webhook untuk sesi tertentu
-  setSessionWebhook(sessionId, url) {
-    if (!url) {
-      this.sessionWebhooks.delete(sessionId);
-      logger.info({
-        msg: `Webhook untuk sesi ${sessionId} dihapus`,
-        sessionId,
-      });
-    } else {
-      this.sessionWebhooks.set(sessionId, url);
-      logger.info({
-        msg: `Webhook untuk sesi ${sessionId} diatur ke ${url}`,
-        sessionId,
-        webhook: url,
-      });
     }
 
-    // Simpan perubahan ke file
-    this.saveWebhookData();
-  }
+    webhookData.sessionWebhooks[sessionId] = {
+      url: webhookUrl.toString(),
+      secretKey,
+      enabled: enabled,
+      retryCount: 0,
+      lastFailedAt: null,
+      createdAt: existingWebhook?.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
 
-  // Mengirim data pesan ke webhook
-  async sendToWebhook(sessionId, data) {
-    try {
-      // Tambahkan sessionId ke data
-      const payload = {
-        sessionId,
-        timestamp: Date.now(),
-        ...data,
-      };
+    await saveWebhookData();
 
-      // Cek webhook khusus sesi dulu
-      const sessionWebhook = this.sessionWebhooks.get(sessionId);
-      if (sessionWebhook) {
-        await axios.post(sessionWebhook, payload);
-        logger.debug({
-          msg: `Pesan terkirim ke webhook sesi ${sessionId}`,
-          sessionId,
-        });
-      }
+    logger.info({
+      msg: "Webhook URL set successfully",
+      sessionId,
+      url: webhookUrl.toString(),
+      enabled,
+    });
 
-      // Kirim juga ke webhook global jika ada
-      if (this.globalWebhook) {
-        await axios.post(this.globalWebhook, payload);
-        logger.debug({
-          msg: `Pesan terkirim ke webhook global`,
-          sessionId,
-        });
-      }
-
-      return true;
-    } catch (error) {
-      logger.error({
-        msg: `Error mengirim ke webhook`,
-        sessionId,
-        error: error.message,
-        stack: error.stack,
-      });
-      return false;
-    }
-  }
-
-  // Mendapatkan webhook untuk sesi tertentu
-  getSessionWebhook(sessionId) {
-    return this.sessionWebhooks.get(sessionId) || null;
-  }
-
-  // Mendapatkan status webhook
-  getStatus() {
+    // Return webhook configuration
     return {
-      globalWebhook: this.globalWebhook,
-      sessionWebhooks: Array.from(this.sessionWebhooks.entries()).map(
-        ([id, url]) => ({
-          sessionId: id,
-          webhook: url,
-        })
-      ),
+      url: webhookUrl.toString(),
+      secretKey,
+      enabled,
+      retryCount,
+      lastFailedAt,
+      createdAt: webhookData.sessionWebhooks[sessionId].createdAt,
+      updatedAt: webhookData.sessionWebhooks[sessionId].updatedAt,
+    };
+  } catch (error) {
+    logger.error({
+      msg: "Invalid webhook URL",
+      sessionId,
+      url,
+      error: error.message,
+    });
+    return false;
+  }
+};
+
+// Hapus webhook untuk session
+const clearSessionWebhook = async (sessionId) => {
+  delete webhookData.sessionWebhooks[sessionId];
+  await saveWebhookData();
+
+  logger.info({
+    msg: "Webhook cleared for session",
+    sessionId,
+  });
+};
+
+// Kirim data ke webhook langsung
+const sendToWebhook = async (sessionId, data) => {
+  const webhookConfig = webhookData.sessionWebhooks[sessionId];
+
+  if (!webhookConfig || !webhookConfig.enabled) {
+    logger.debug({
+      msg: "No webhook configured for session or webhook disabled",
+      sessionId,
+    });
+    return false;
+  }
+
+  try {
+    const response = await axios.post(webhookConfig.url, data, {
+      headers: {
+        "Content-Type": "application/json",
+        "X-Webhook-Secret": webhookConfig.secretKey,
+      },
+      timeout: 5000,
+    });
+
+    // Reset retry count jika sukses
+    webhookConfig.retryCount = 0;
+    webhookConfig.lastFailedAt = null;
+    await saveWebhookData();
+
+    logger.info({
+      msg: "Webhook sent successfully",
+      sessionId,
+      statusCode: response.status,
+    });
+
+    return true;
+  } catch (error) {
+    // Update retry counter
+    webhookConfig.retryCount = (webhookConfig.retryCount || 0) + 1;
+    webhookConfig.lastFailedAt = new Date().toISOString();
+
+    // Nonaktifkan jika webhook offline
+    if (error.response && error.response.status === 404) {
+      webhookConfig.enabled = false;
+      logger.warn({
+        msg: `Webhook disabled due to target being offline`,
+        sessionId,
+        url: webhookConfig.url,
+      });
+    } else if (
+      webhookConfig.retryCount >= process.env.WEBHOOK_DISABLED_ATTEMPTS
+    ) {
+      // Nonaktifkan jika gagal 5x
+      webhookConfig.enabled = false;
+      logger.warn({
+        msg: `Webhook disabled after ${process.env.WEBHOOK_DISABLED_ATTEMPTS} consecutive failures`,
+        sessionId,
+        url: webhookConfig.url,
+      });
+    }
+
+    await saveWebhookData();
+
+    logger.error({
+      msg: "Failed to send webhook",
+      sessionId,
+      error: error.message,
+      retryCount: webhookConfig.retryCount,
+      enabled: webhookConfig.enabled,
+    });
+
+    return false;
+  }
+};
+
+// Check webhook health
+const checkHealth = async (sessionId) => {
+  const webhookConfig = webhookData.sessionWebhooks[sessionId];
+  if (!webhookConfig) {
+    return {
+      status: "not_configured",
     };
   }
 
-  // Membersihkan webhook untuk sesi tertentu
-  clearSessionWebhook(sessionId) {
-    this.sessionWebhooks.delete(sessionId);
-    this.saveWebhookData();
-    logger.info({
-      msg: `Webhook untuk sesi ${sessionId} dibersihkan`,
-      sessionId,
+  try {
+    const response = await axios.get(webhookConfig.url, {
+      timeout: 5000,
     });
+    return {
+      status: response.status === 200 ? "healthy" : "unhealthy",
+      url: webhookConfig.url,
+      enabled: webhookConfig.enabled,
+      retryCount: webhookConfig.retryCount,
+      lastFailedAt: webhookConfig.lastFailedAt,
+      createdAt: webhookConfig.createdAt,
+      updatedAt: webhookConfig.updatedAt,
+    };
+  } catch (error) {
+    return {
+      status: "unhealthy",
+      url: webhookConfig.url,
+      enabled: webhookConfig.enabled,
+      retryCount: webhookConfig.retryCount,
+      lastFailedAt: webhookConfig.lastFailedAt,
+      createdAt: webhookConfig.createdAt,
+      updatedAt: webhookConfig.updatedAt,
+      error: error.message,
+    };
   }
+};
 
-  // Membersihkan semua webhook
-  clearAllWebhooks() {
-    this.sessionWebhooks.clear();
-    this.saveWebhookData();
-    logger.info({
-      msg: "Semua webhook dibersihkan",
-    });
-  }
-}
+// reset webhook session
+const resetWebhookSession = async (sessionId) => {
+  const currentTime = new Date().toISOString();
 
-module.exports = new WebhookService();
+  webhookData.sessionWebhooks[sessionId] = {
+    enabled: true,
+    retryCount: 0,
+    lastFailedAt: null,
+    createdAt: currentTime,
+    updatedAt: currentTime,
+  };
+
+  await saveWebhookData();
+};
+
+// Initialize webhook data when module loads
+initializeWebhookData();
+
+module.exports = {
+  setWebhook,
+  clearSessionWebhook,
+  sendToWebhook,
+  checkHealth,
+};

@@ -4,9 +4,10 @@ WhatsApp API menggunakan library Baileys dengan fitur multi-session dan webhook.
 
 ## Updates & Improvements
 
-### Latest Updates (17 Mar 2025)
-- Penambahan sistem antrian untuk pengiriman pesan batch
+### Latest Updates (28 Mar 2025)
+- Peningkatan sistem antrian dengan dukungan delay dinamis
 - Implementasi webhook untuk pesan masuk dan status koneksi
+- Penambahan contoh implementasi batch messaging
 
 ## 🚀 Deployment
 
@@ -17,7 +18,10 @@ Untuk panduan lengkap deployment ke berbagai platform (Heroku, Railway, Render, 
 - Multi-session WhatsApp
 - Pengiriman pesan teks
 - Pengiriman pesan media (gambar, video, dokumen)
-- Pengiriman pesan massal (bulk messaging) dengan sistem antrian
+- Pengiriman pesan massal (bulk messaging) dengan:
+  - Sistem antrian
+  - Retry otomatis untuk pesan gagal
+  - Monitoring status pengiriman
 - Manajemen sesi (create, check status, logout)
 - Penanganan memory leak yang optimal
 - Graceful shutdown
@@ -73,7 +77,7 @@ npm run start
     "receiver": "6285123456789",
     "message": "Hello World!",
     "file": "https://example.com/image.jpg", // Optional
-    "viewOnce": false // Optional, default: false
+    "viewOnce": false, // Optional, default: false
   }
   ```
 
@@ -83,6 +87,15 @@ npm run start
     "sender": "session_id_1",
     "receiver": "6285123456789 or group_id@g.us",
     "message": "Hello @user!"
+  }
+  ```
+
+- `POST /messages/batch` - Kirim pesan massal
+  ```json
+  {
+    "sender": "session_id_1",
+    "receivers": ["6285123456789", "6285987654321"],
+    "message": "Hello World!",
   }
   ```
 
@@ -241,6 +254,11 @@ Sistem webhook memungkinkan Anda untuk menerima notifikasi real-time tentang:
 ### Contoh Implementasi Webhook
 
 Silahkan lihat contoh implementasi webhook di [examples/webhook-receiver.js](examples/webhook-receiver.js)
+
+
+### Contoh Test Batch Messaging
+
+Untuk  test queue, silakan lihat [examples/test-batch-message.js](examples/test-batch-message.js)
 
 ### Menggunakan Webhook
 
