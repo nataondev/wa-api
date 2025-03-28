@@ -115,7 +115,46 @@ QUEUE_BATCH_DELAY=1000
 QUEUE_MAX_RETRIES=3
 QUEUE_RETRY_DELAY=2000
 QUEUE_TIMEOUT=30000
+
+# Redis Configuration
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=
+REDIS_DB=0
 ```
+
+This API now uses Redis-based queue (Bull) to handle message processing. This provides several benefits:
+- Persistence: Messages will survive server restarts
+- Scalability: Multiple instances of the API can share the same queue
+- Reliability: Failed jobs can be retried automatically
+- Monitoring: Queue status can be easily monitored
+
+To use this feature, you need to have Redis server running. You can install Redis locally or use a cloud-based service.
+
+#### Local Redis Installation
+
+For development purposes, you can run Redis locally:
+
+**For Windows:**
+1. Use WSL (Windows Subsystem for Linux)
+2. Use Docker: `docker run -p 6379:6379 redis`
+
+**For Linux:**
+```bash
+sudo apt update
+sudo apt install redis-server
+sudo systemctl start redis-server
+```
+
+**For macOS:**
+```bash
+brew install redis
+brew services start redis
+```
+
+#### Queue Monitoring
+
+You can check the status of the queue by calling the API endpoint `/api/queue/status/:sessionId`.
 
 ### Webhook Configuration
 ```env

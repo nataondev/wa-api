@@ -810,14 +810,14 @@ const formatPhone = (phoneNumber) => {
 
 const formatGroup = (groupId) => groupId.replace(/[^\d-]/g, "") + "@g.us";
 
-const cleanup = () => {
+const cleanup = async () => {
   logger.info({
     msg: "Running cleanup before exit",
     sessions: sessions.size,
   });
 
   // Bersihkan semua queue
-  queueService.clearAllQueues();
+  await queueService.clearAllQueues();
 
   sessions.forEach((client, sessionId) => {
     if (!client.isLegacy) {

@@ -1,20 +1,18 @@
 /**
  * Queue Service untuk menangani antrian pesan WhatsApp
- * Menggunakan better-queue untuk implementasi yang sederhana
+ * Menggunakan Bull dan Redis untuk implementasi yang reliable
  */
 
-const Queue = require("better-queue");
 const logger = require("../utils/logger");
-
-// Menyimpan instance dari semua queue dalam objek
-const queues = {};
+const redisQueue = require("../utils/queue");
 
 /**
  * Fungsi pemrosesan pesan dalam queue
- * @param {Object} task - Tugas/pesan yang akan diproses
- * @param {Function} cb - Callback function setelah tugas selesai
+ * @param {Object} job - Job yang akan diproses
+ * @returns {Promise<Object>} - Hasil proses
  */
-function processMessage(task, cb) {
+async function processMessage(job) {
+  const { data: task } = job;
   const { sessionId, chatId, message, type } = task;
 
   logger.info({
@@ -22,6 +20,7 @@ function processMessage(task, cb) {
     sessionId,
     chatId,
     type,
+    jobId: job.id,
   });
 
   try {
@@ -36,93 +35,40 @@ function processMessage(task, cb) {
         sessionId,
         error: error.message,
       });
-      return cb(error);
+      throw error;
     }
 
     // Mengirim pesan berdasarkan tipe
-    client
-      .sendMessage(chatId, message)
-      .then((result) => {
-        logger.info({
-          msg: `Pesan berhasil dikirim`,
-          sessionId,
-          chatId,
-          messageId: result?.key?.id || null,
-        });
+    const result = await client.sendMessage(chatId, message);
+    
+    logger.info({
+      msg: `Pesan berhasil dikirim`,
+      sessionId,
+      chatId,
+      messageId: result?.key?.id || null,
+    });
 
-        // Tambahkan informasi tambahan ke result untuk konsistensi format
-        const enhancedResult = {
-          ...result,
-          sender: sessionId,
-          receiver: chatId,
-          // Jika message adalah objek dengan property text, gunakan itu
-          // Jika tidak, gunakan message langsung
-          message:
-            message.text ||
-            (typeof message === "string" ? message : JSON.stringify(message)),
-        };
+    // Tambahkan informasi tambahan ke result untuk konsistensi format
+    const enhancedResult = {
+      ...result,
+      sender: sessionId,
+      receiver: chatId,
+      // Jika message adalah objek dengan property text, gunakan itu
+      // Jika tidak, gunakan message langsung
+      message:
+        message.text ||
+        (typeof message === "string" ? message : JSON.stringify(message)),
+    };
 
-        cb(null, enhancedResult);
-      })
-      .catch((error) => {
-        logger.error({
-          msg: `Gagal mengirim pesan`,
-          sessionId,
-          chatId,
-          error: error.message,
-        });
-        cb(error);
-      });
+    return enhancedResult;
   } catch (error) {
     logger.error({
       msg: `Error saat memproses pesan`,
       error: error.message,
       stack: error.stack,
     });
-    cb(error);
+    throw error;
   }
-}
-
-/**
- * Membuat queue baru untuk session jika belum ada
- * @param {string} sessionId - ID session WhatsApp
- * @returns {Object} Queue instance untuk session
- */
-function getOrCreateQueue(sessionId) {
-  if (!queues[sessionId]) {
-    logger.info({
-      msg: `Membuat queue baru untuk session`,
-      sessionId,
-    });
-
-    queues[sessionId] = new Queue(processMessage, {
-      concurrent: 3, // Hanya memproses 1 pesan dalam satu waktu
-      maxRetries: 3, // Maksimal 3x percobaan jika gagal
-      retryDelay: 1000, // Tunggu 1 detik sebelum mencoba lagi
-      afterProcessDelay: 1000, // Delay 1 detik setelah setiap pesan (mencegah rate limit)
-    });
-
-    // Event handlers untuk monitoring queue
-    queues[sessionId].on("task_finish", (taskId, result) => {
-      logger.info({
-        msg: `Tugas selesai`,
-        sessionId,
-        taskId,
-        status: "success",
-      });
-    });
-
-    queues[sessionId].on("task_failed", (taskId, error) => {
-      logger.error({
-        msg: `Tugas gagal`,
-        sessionId,
-        taskId,
-        error: error.message,
-      });
-    });
-  }
-
-  return queues[sessionId];
 }
 
 /**
@@ -131,111 +77,64 @@ function getOrCreateQueue(sessionId) {
  * @param {Object} task - Tugas yang akan ditambahkan ke queue
  * @returns {Promise} Promise dengan hasil penambahan ke queue
  */
-function addToQueue(sessionId, task) {
-  return new Promise((resolve, reject) => {
-    try {
-      const queue = getOrCreateQueue(sessionId);
+async function addToQueue(sessionId, task) {
+  try {
+    logger.info({
+      msg: `Menambahkan pesan ke queue`,
+      sessionId,
+      chatId: task.chatId,
+      type: task.type,
+    });
 
-      queue.push(task, (error, result) => {
-        if (error) {
-          logger.error({
-            msg: `Error saat menjalankan tugas dalam queue`,
-            sessionId,
-            error: error.message,
-          });
-          return reject(error);
-        }
-        resolve(result);
-      });
-    } catch (error) {
-      logger.error({
-        msg: `Gagal menambahkan ke queue`,
-        sessionId,
-        error: error.message,
-      });
-      reject(error);
-    }
-  });
+    // Buat queue jika belum ada dengan processor function
+    const queue = redisQueue.getOrCreateQueue(sessionId, processMessage);
+    
+    // Tambahkan task ke queue
+    const result = await redisQueue.addToQueue(sessionId, task);
+    
+    logger.info({
+      msg: `Pesan berhasil ditambahkan ke queue`,
+      sessionId,
+      chatId: task.chatId,
+    });
+    
+    return result;
+  } catch (error) {
+    logger.error({
+      msg: `Gagal menambahkan pesan ke queue`,
+      sessionId,
+      chatId: task?.chatId,
+      error: error.message,
+      stack: error.stack,
+    });
+    throw error;
+  }
 }
 
 /**
  * Menghapus queue untuk sesi tertentu
  * @param {string} sessionId - ID sesi yang queuenya akan dihapus
- * @returns {boolean} - Status keberhasilan
+ * @returns {Promise<boolean>} - Status keberhasilan
  */
-function clearSessionQueue(sessionId) {
-  if (!queues[sessionId]) {
-    logger.info({
-      msg: `Tidak ada queue untuk dihapus`,
-      sessionId,
-    });
-    return false;
-  }
-
-  try {
-    queues[sessionId].destroy();
-    delete queues[sessionId];
-
-    logger.info({
-      msg: `Queue untuk session berhasil dihapus`,
-      sessionId,
-    });
-    return true;
-  } catch (error) {
-    logger.error({
-      msg: `Gagal menghapus queue untuk session`,
-      sessionId,
-      error: error.message,
-    });
-    return false;
-  }
+async function clearSessionQueue(sessionId) {
+  return await redisQueue.clearSessionQueue(sessionId);
 }
 
 /**
  * Menghapus semua queue yang ada
  * Berguna saat melakukan shutdown aplikasi
  */
-function clearAllQueues() {
-  logger.info({
-    msg: "Menghapus semua queue",
-    queueCount: Object.keys(queues).length,
-  });
-
-  for (const sessionId in queues) {
-    try {
-      queues[sessionId].destroy();
-      logger.info({
-        msg: `Queue untuk session berhasil dihapus`,
-        sessionId,
-      });
-    } catch (error) {
-      logger.error({
-        msg: `Gagal menghapus queue untuk session`,
-        sessionId,
-        error: error.message,
-      });
-    }
-  }
-
-  // Reset queues object
-  Object.keys(queues).forEach((key) => delete queues[key]);
+async function clearAllQueues() {
+  await redisQueue.clearAllQueues();
 }
 
 /**
  * Mengecek status queue untuk session tertentu
  * @param {string} sessionId - ID session WhatsApp
- * @returns {Object} Informasi status queue
+ * @returns {Promise<Object>} Informasi status queue
  */
-function getQueueStatus(sessionId) {
-  if (!queues[sessionId]) {
-    return { exists: false, length: 0, running: false };
-  }
-
-  return {
-    exists: true,
-    length: queues[sessionId].length || 0,
-    running: queues[sessionId].running || false,
-  };
+async function getQueueStatus(sessionId) {
+  return await redisQueue.getQueueStatus(sessionId);
 }
 
 module.exports = {
