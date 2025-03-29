@@ -789,6 +789,7 @@ const sendMessage = async (client, chatId, message, showTyping = true) => {
       sessionId,
       chatId,
       messageType: typeof message,
+      messageStructure: message,
     });
 
     // Setelah menunjukkan typing, kirim status "paused" untuk menghentikan indikator typing
@@ -807,11 +808,42 @@ const sendMessage = async (client, chatId, message, showTyping = true) => {
 
     // Tambahkan ke antrian
     try {
+      // Jika pesan adalah string, konversi ke format yang benar
+      let processedMessage = message;
+      if (typeof message === "string") {
+        processedMessage = { text: message };
+      }
+
+      // Pastikan pesan media memiliki format yang benar
+      if (typeof message === "object") {
+        // Jika ada properti media (image, video, document, audio), gunakan langsung
+        if (
+          message.image ||
+          message.video ||
+          message.document ||
+          message.audio
+        ) {
+          processedMessage = message;
+        }
+        // Jika ada properti text, pastikan dalam format yang benar
+        else if (message.text) {
+          processedMessage = { text: message.text };
+        }
+      }
+
       const result = await queueService.addToQueue(sessionId, {
         sessionId,
         chatId,
-        message,
-        type: "text",
+        message: processedMessage,
+        type: processedMessage.image
+          ? "image"
+          : processedMessage.video
+          ? "video"
+          : processedMessage.document
+          ? "document"
+          : processedMessage.audio
+          ? "audio"
+          : "text",
       });
 
       logger.info({
@@ -819,6 +851,15 @@ const sendMessage = async (client, chatId, message, showTyping = true) => {
         sessionId,
         chatId,
         messageId: result?.key?.id || null,
+        messageType: processedMessage.image
+          ? "image"
+          : processedMessage.video
+          ? "video"
+          : processedMessage.document
+          ? "document"
+          : processedMessage.audio
+          ? "audio"
+          : "text",
       });
 
       return result;

@@ -27,7 +27,7 @@ const upstashConfig = {
 let redisClient;
 
 // if upstash config is not empty, use upstash config
-if (process.env.UPSTASH_REDIS_URL || process.env.UPSTASH_REDIS_PASSWORD) {
+if (process.env.UPSTASH_REDIS_URL && process.env.UPSTASH_REDIS_PASSWORD) {
   redisClient = new Redis(upstashConfig.url, {
     maxRetriesPerRequest: null,
     enableReadyCheck: false,
