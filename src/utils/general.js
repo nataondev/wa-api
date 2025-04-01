@@ -19,6 +19,15 @@ function categorizeFile(fileResponse) {
   let fileType = contentType.split("/")[0] || "document";
   const fileExtension = contentType.split("/")[1] || "unknown";
 
+  if (fileType === "application") {
+    return {
+      document: {
+        url: fileResponse.url,
+      },
+      mimetype: contentType,
+    };
+  }
+
   if (fileExtension === "gif") {
     return {
       video: {
