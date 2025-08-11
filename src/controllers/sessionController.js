@@ -153,7 +153,7 @@ module.exports = {
       }
 
       // Ambil daftar grup
-      const groups = whatsappService.getChatList(sessionId, true);
+      const groups = await whatsappService.getChatList(sessionId, true);
 
       // Format response
       const formattedGroups = groups.map((group) => ({

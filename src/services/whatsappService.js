@@ -16,7 +16,6 @@ const readFileAsync = util.promisify(fs.readFile);
 const {
   makeWASocket,
   DisconnectReason,
-  makeInMemoryStore,
   useMultiFileAuthState,
   delay,
   Browsers,
@@ -123,9 +122,11 @@ const cleanupSession = async (sessionId) => {
         }
       }
 
-      // Cleanup lainnya
-      session.ev.removeAllListeners();
+    // Cleanup lainnya
+    session.ev.removeAllListeners();
+    if (session.ws) {
       await session.ws.close();
+    }
       sessions.delete(sessionId);
 
       logger.info({
@@ -167,10 +168,10 @@ const checkAndCleanSessionFolder = (sessionId) => {
         // Hapus folder sesi
         fs.rmSync(sessionDir, { recursive: true, force: true });
 
-        // Hapus file store jika ada
-        if (fs.existsSync(storeFile)) {
-          fs.unlinkSync(storeFile);
-        }
+      // Hapus file store lama jika ada (kompatibilitas lama)
+      if (fs.existsSync(storeFile)) {
+        fs.unlinkSync(storeFile);
+      }
 
         return false;
       }
@@ -199,17 +200,6 @@ const createSession = async (sessionId, isLegacy = false, res = null) => {
     await checkAndCleanSessionFolder(sessionId);
     await cleanupSession(sessionId);
 
-    // Optimasi store hanya untuk group metadata
-    const store = makeInMemoryStore({
-      logger: pino({ level: "silent" }),
-      path: sessionsDir(`${sessionId}_store.json`),
-      maxCachedMessages: 0,
-      maxCachedGroups: parseInt(process.env.MAX_CACHED_GROUPS || "100", 10),
-    });
-
-    // Baca existing store jika ada
-    store.readFromFile(sessionsDir(`${sessionId}_store.json`));
-
     const { state, saveCreds } = await useMultiFileAuthState(
       sessionsDir(`md_${sessionId}`)
     );
@@ -219,59 +209,13 @@ const createSession = async (sessionId, isLegacy = false, res = null) => {
       browser: Browsers.ubuntu("Chrome"),
       auth: state,
       logger: pino({ level: "silent" }),
-      cachedGroupMetadata: async (jid) => {
-        try {
-          const metadata = await client.groupMetadata(jid);
-          return metadata;
-        } catch (error) {
-          logger.error({
-            msg: "Error getting group metadata",
-            jid,
-            error: error.message,
-            stack: error.stack,
-          });
-          return null;
-        }
-      },
     });
 
-    // Bind store ke client
-    store.bind(client.ev);
-
-    // Optimize store saving interval (setiap 5 menit)
-    const storeInterval = setInterval(() => {
-      try {
-        store.writeToFile(sessionsDir(`${sessionId}_store.json`));
-        logger.info({
-          msg: "Store saved",
-          sessionId,
-        });
-      } catch (error) {
-        logger.error({
-          msg: "Failed to save store",
-          sessionId,
-          error: error.message,
-        });
-      }
-    }, 5 * 60 * 1000);
-
-    // Simpan session dengan store
-    sessions.set(sessionId, {
-      ...client,
-      store,
-      storeInterval,
-    });
+    // Simpan session (tanpa store)
+    sessions.set(sessionId, client);
 
     // Cleanup handler yang lebih efisien
-    const cleanupHandler = async () => {
-      const session = sessions.get(sessionId);
-      if (session) {
-        clearInterval(session.storeInterval);
-        if (session.store) {
-          await session.store.writeToFile();
-        }
-      }
-    };
+    const cleanupHandler = async () => {};
 
     // Tambahkan cleanup handler
     process.on("SIGTERM", cleanupHandler);
@@ -491,14 +435,6 @@ const createSession = async (sessionId, isLegacy = false, res = null) => {
       saveCreds();
     });
 
-    // Tambahkan event listener untuk chats
-    client.ev.on("chats.set", async () => {
-      if (store) {
-        // Force update store
-        store.writeToFile(sessionsDir(`${sessionId}_store.json`));
-      }
-    });
-
     return client;
   } catch (error) {
     logger.error({
@@ -679,29 +615,28 @@ const deleteSession = async (sessionId, isLegacy = false, res = null) => {
   }
 };
 
-const getChatList = (sessionId, isGroup = false) => {
+const getChatList = async (sessionId, isGroup = false) => {
   try {
     const session = sessions.get(sessionId);
     if (!session) {
       throw new Error("Session not found");
     }
 
-    const chatType = isGroup ? "@g.us" : "@s.whatsapp.net";
-    const chats = session.store.chats.filter((chat) => {
-      return chat.id.endsWith(chatType);
-    });
-
-    // Format data untuk grup
     if (isGroup) {
-      return chats.map((chat) => ({
-        id: chat.id,
-        name: chat.name || "Unknown Group",
-        participant_count: chat.participantCount || 0,
-        creation_time: chat.creationTime || new Date().toISOString(),
+      const groupsMap = await session.groupFetchAllParticipating();
+      const groups = Object.values(groupsMap || {});
+      return groups.map((g) => ({
+        id: g.id,
+        name: g.subject || g.name || "Unknown Group",
+        participant_count: Array.isArray(g.participants)
+          ? g.participants.length
+          : g.participantCount || 0,
+        creation_time: g.creation || g.creationTime || new Date().toISOString(),
       }));
     }
 
-    return chats;
+    // Tanpa store, tidak ada daftar chat non-grup yang disinkronkan
+    return [];
   } catch (error) {
     console.error(`[${sessionId}] Error getting chat list:`, error);
     throw error;
@@ -914,18 +849,7 @@ const formatPhone = (phoneNumber) => {
 
 const formatGroup = (groupId) => groupId.replace(/[^\d-]/g, "") + "@g.us";
 
-const backupStore = async (sessionId) => {
-  const storePath = sessionsDir(`${sessionId}_store.json`);
-  const backupPath = sessionsDir(`${sessionId}_store.backup.json`);
-
-  if (fs.existsSync(storePath)) {
-    fs.copyFileSync(storePath, backupPath);
-    logger.info({
-      msg: "Store backup created",
-      sessionId,
-    });
-  }
-};
+// Store tidak lagi digunakan, fungsi backup store dihapus
 
 const cleanup = async () => {
   logger.info({
@@ -935,17 +859,7 @@ const cleanup = async () => {
 
   // Bersihkan semua queue
   await queueService.clearAllQueues();
-
-  for (const [sessionId, session] of sessions.entries()) {
-    await backupStore(sessionId);
-    if (!session.isLegacy) {
-      session.store.writeToFile(sessionsDir(sessionId + "_store.json"));
-      logger.info({
-        msg: "Store written to file",
-        sessionId,
-      });
-    }
-  }
+  // Tidak ada store yang perlu disimpan saat cleanup
 };
 
 const init = () => {
